@@ -1,16 +1,12 @@
-from models.unet import *
-from models.deeplabv3 import *
-from models.deeplabv3_exp import *
-from models.unet_expanded import *
-
+import models
 __all__ = ['get_model']
 
 
 _models = {
-    'unet': UNet,
-    'unet_exp': UNet_Expanded,
-    'deeplabv3': Deeplabv3plus,
-    'deeplabv3_exp': Deeplabv3PlusExpanded
+    'unet': models.UNet,
+    'unet_exp': models.UNet_Expanded,
+    'deeplabv3': models.Deeplabv3plus,
+    'deeplabv3_exp': models.Deeplabv3PlusExpanded
 }
 
 

@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Conv2D
-from .backbones import get_backbone
-from .layers import ConvBlock
+from models.backbones import get_backbone
+from models.layers import ConvBlock
 
 
 class AtrousSpatialPyramidPooling(tf.keras.layers.Layer):
