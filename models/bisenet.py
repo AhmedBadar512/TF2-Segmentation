@@ -138,6 +138,9 @@ class BiSeNetv2(K.Model):
         self.ce = ContextEmbeddingBlock()
         # =========== Segmentation Head =========== #
         self.seg_head = K.Sequential([ConvBlock(seg_channels, 3, padding='same'), K.layers.Conv2D(classes, 1, padding='same')])
+        self.seg_head1 = K.Sequential([ConvBlock(seg_channels, 3, padding='same'), K.layers.Conv2D(classes, 1, padding='same')])
+        self.seg_head2 = K.Sequential([ConvBlock(seg_channels, 3, padding='same'), K.layers.Conv2D(classes, 1, padding='same')])
+        self.seg_head3 = K.Sequential([ConvBlock(seg_channels, 3, padding='same'), K.layers.Conv2D(classes, 1, padding='same')])
         # ========== Aggregation Head ============ #
         self.aggregator = Aggregator()
 
@@ -156,14 +159,14 @@ class BiSeNetv2(K.Model):
 
         final_feat = self.seg_head(tf.image.resize(self.aggregator((x1_s3, x2_ce)), original_size))
         if training:
-            out_s3 = tf.image.resize(self.seg_head(x2_s3), original_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-            out_s4 = tf.image.resize(self.seg_head(x2_s4), original_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-            out_s5 = tf.image.resize(self.seg_head(x2_s5), original_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+            out_s3 = tf.image.resize(self.seg_head1(x2_s3), original_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+            out_s4 = tf.image.resize(self.seg_head2(x2_s4), original_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+            out_s5 = tf.image.resize(self.seg_head3(x2_s5), original_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
             return final_feat, out_s3, out_s4, out_s5
         return final_feat
 
 if __name__ == "__main__":
     x = tf.random.normal((1, 512, 1024, 3))
     bisenet = BiSeNetv2(classes=19)
-    z = bisenet(x)
-    print(z.shape)
+    z = bisenet(x, True)
+    [print(g.shape) for g in z]
