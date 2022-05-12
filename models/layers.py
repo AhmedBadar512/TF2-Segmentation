@@ -66,6 +66,44 @@ class ConvBlock(K.layers.Layer):
         return x
 
 
+class DWConvBlock(K.layers.Layer):
+    """ ConBlock layer consists of Conv2D + Normalization + Activation.
+    """
+
+    def __init__(self,
+                 depth_multiplier=3,
+                 kernel_size=1,
+                 strides=(1, 1),
+                 padding='valid',
+                 use_bias=True,
+                 norm_layer="batch",
+                 activation='linear',
+                 dilation_rate=(1, 1),
+                 **kwargs):
+        super(DWConvBlock, self).__init__()
+        self.dwconv2d = K.layers.DepthwiseConv2D(kernel_size,
+                                                 strides,
+                                                 padding,
+                                                 depth_multiplier=depth_multiplier,
+                                                 dilation_rate=dilation_rate,
+                                                 use_bias=use_bias,
+                                                 **kwargs)
+        self.activation = K.layers.Activation(activation)
+        if norm_layer == 'batch':
+            self.normalization = K.layers.BatchNormalization()
+        elif norm_layer == 'instance':
+            self.normalization = tfa.layers.InstanceNormalization()
+        else:
+            self.normalization = tf.identity
+
+    def call(self, inputs, training=None, *args, **kwargs):
+        x = self.dwconv2d(inputs)
+        x = self.normalization(x, training)
+        x = self.activation(x)
+
+        return x
+
+
 class ConvTransposeBlock(K.layers.Layer):
     """ ConvTransposeBlock layer consists of Conv2DTranspose + Normalization + Activation.
     """
@@ -141,7 +179,8 @@ class ResBlock(K.layers.Layer):
 
 
 class SPADE(K.layers.Layer):
-    def __init__(self, channels, sn=False, activation=None, ks=5, is_oasis=False, init=tf.keras.initializers.glorot_uniform()):
+    def __init__(self, channels, sn=False, activation=None, ks=5, is_oasis=False,
+                 init=tf.keras.initializers.glorot_uniform()):
         super().__init__()
         self.conv1 = K.layers.Conv2D(128, ks, 1, padding="SAME", activation="relu", kernel_initializer=init)
         self.conv_gamma = K.layers.Conv2D(channels, ks, 1, padding="SAME", kernel_initializer=init)
@@ -189,21 +228,26 @@ class SPADEResBlock(K.Model):
 
     def build(self, input_shape):
         channels_middle = tf.minimum(self.channels, input_shape[0][-1]).numpy()
-        self.spade1 = SPADE(input_shape[0][-1], activation=tf.nn.leaky_relu, sn=True, ks=self.ks, is_oasis=self.is_oasis, init=self.init)
+        self.spade1 = SPADE(input_shape[0][-1], activation=tf.nn.leaky_relu, sn=True, ks=self.ks,
+                            is_oasis=self.is_oasis, init=self.init)
         self.conv1 = K.layers.Conv2D(channels_middle, 3, 1, padding="SAME", kernel_initializer=self.init)
         if self.sn:
             self.conv1 = tfa.layers.SpectralNormalization(self.conv1)
-        self.spade2 = SPADE(channels_middle, activation=tf.nn.leaky_relu, sn=True, ks=self.ks, is_oasis=self.is_oasis, init=self.init)
+        self.spade2 = SPADE(channels_middle, activation=tf.nn.leaky_relu, sn=True, ks=self.ks, is_oasis=self.is_oasis,
+                            init=self.init)
         if self.sn:
-            self.conv2 = tfa.layers.SpectralNormalization(K.layers.Conv2D(self.channels, 3, 1, padding="SAME", kernel_initializer=self.init))
+            self.conv2 = tfa.layers.SpectralNormalization(
+                K.layers.Conv2D(self.channels, 3, 1, padding="SAME", kernel_initializer=self.init))
         else:
             self.conv2 = K.layers.Conv2D(self.channels, 3, 1, padding="SAME", kernel_initializer=self.init)
         if self.channels != input_shape[0][-1]:
             self.spade3 = SPADE(input_shape[0][-1], sn=True, ks=self.ks, is_oasis=self.is_oasis, init=self.init)
             if self.sn:
-                self.conv3 = tfa.layers.SpectralNormalization(K.layers.Conv2D(self.channels, 1, 1, padding="SAME", use_bias=False, kernel_initializer=self.init))
+                self.conv3 = tfa.layers.SpectralNormalization(
+                    K.layers.Conv2D(self.channels, 1, 1, padding="SAME", use_bias=False, kernel_initializer=self.init))
             else:
-                self.conv3 = K.layers.Conv2D(self.channels, 1, 1, padding="SAME", use_bias=False, kernel_initializer=self.init)
+                self.conv3 = K.layers.Conv2D(self.channels, 1, 1, padding="SAME", use_bias=False,
+                                             kernel_initializer=self.init)
 
     def call(self, inputs, training=None, mask=None):
         feature, segmap = inputs
@@ -225,17 +269,20 @@ class ResBlock_D(K.Model):
         self.up_down = up_down
         self.first = first
         if self.first:
-            self.conv1 = tfa.layers.SpectralNormalization(K.layers.Conv2D(self.channels, 3, 1, padding="SAME", kernel_initializer=init))
+            self.conv1 = tfa.layers.SpectralNormalization(
+                K.layers.Conv2D(self.channels, 3, 1, padding="SAME", kernel_initializer=init))
         else:
             if up_down == "up":
                 self.conv1 = K.Sequential([K.layers.LeakyReLU(),
                                            K.layers.UpSampling2D(),
                                            tfa.layers.SpectralNormalization(
-                                               K.layers.Conv2D(self.channels, 3, 1, padding="SAME", kernel_initializer=init))])
+                                               K.layers.Conv2D(self.channels, 3, 1, padding="SAME",
+                                                               kernel_initializer=init))])
             else:
                 self.conv1 = K.Sequential([K.layers.LeakyReLU(),
                                            tfa.layers.SpectralNormalization(
-                                               K.layers.Conv2D(self.channels, 3, 1, padding="SAME", kernel_initializer=init))])
+                                               K.layers.Conv2D(self.channels, 3, 1, padding="SAME",
+                                                               kernel_initializer=init))])
         self.conv2 = K.Sequential([K.layers.LeakyReLU(),
                                    tfa.layers.SpectralNormalization(
                                        K.layers.Conv2D(self.channels, 3, 1, padding="SAME", kernel_initializer=init))])
@@ -262,7 +309,8 @@ class ResBlock_D(K.Model):
     def build(self, input_shape):
         self.learned_shortcut = (input_shape[-1] != self.channels)
         if self.learned_shortcut:
-            self.conv_s = tfa.layers.SpectralNormalization(K.layers.Conv2D(self.channels, 1, 1, padding="SAME", kernel_initializer=self.init))
+            self.conv_s = tfa.layers.SpectralNormalization(
+                K.layers.Conv2D(self.channels, 1, 1, padding="SAME", kernel_initializer=self.init))
 
     def call(self, inputs, training=None, mask=None):
         x = self.conv1(inputs, training=training)
@@ -282,7 +330,29 @@ class CompDecomp(K.layers.Layer):
     def call(self, inputs, *args, **kwargs):
         # if inputs.shape[1] < self.comp_factor or inputs.shape[2] < self.comp_factor:
         #     return inputs
-        small_inputs = tf.image.resize(inputs, tf.shape(inputs)[1:3]//self.comp_factor, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+        small_inputs = tf.image.resize(inputs, tf.shape(inputs)[1:3] // self.comp_factor,
+                                       method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
         resized_inputs = tf.image.resize(small_inputs, tf.shape(inputs)[1:3])
-        final_outputs = tf.where(inputs > self.threshold, inputs, resized_inputs/self.comp_factor)
+        final_outputs = tf.where(inputs > self.threshold, inputs, resized_inputs / self.comp_factor)
         return final_outputs
+
+
+class StemBlock(K.layers.Layer):
+    def __init__(self, base_channels=16):
+        super(StemBlock, self).__init__()
+        self.conv1 = ConvBlock(base_channels, 3, 2, padding='same', activation='relu')
+        self.conv2 = ConvBlock(base_channels // 2, 1, 1, padding='same', activation='relu')
+        self.conv3 = ConvBlock(base_channels, 3, 2, padding='same', activation='relu')
+        self.maxpool = K.layers.MaxPool2D(3, 2, padding='same')
+        self.convf = ConvBlock(base_channels, 3, 1, padding='same', activation='relu')
+
+    def call(self, inputs, *args, **kwargs):
+        x = self.conv1(inputs)
+        # --------- left branch ----------- #
+        x1 = self.conv2(x)
+        x1 = self.conv3(x1)
+        # -------- right branch ----------- #
+        x2 = self.maxpool(x)
+
+        x = tf.concat([x1, x2], axis=-1)
+        return self.convf(x)
