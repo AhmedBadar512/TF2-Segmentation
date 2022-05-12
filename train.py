@@ -44,7 +44,7 @@ args.add_argument("-si", "--save_interval", type=int, default=5, help="Save inte
 args.add_argument("-wis", "--write_image_summary_steps", type=int, default=50, help="Add images to tfrecords "
 
                                                                                    "after these many logging steps")
-args.add_argument("-m", "--model", type=str, default="bisenet_resnet18_celebamaskhq", help="Select model")
+args.add_argument("-m", "--model", type=str, default="bisenetv2", help="Select model")
 args.add_argument("-l_m", "--load_model", type=str,
                   default=None,
                   help="Load model from path")
@@ -166,7 +166,7 @@ with mirrored_strategy.scope():
         optimizer = K.optimizers.SGD(learning_rate=lr_scheduler, momentum=momentum)
     model = get_model(model_name, classes=classes, in_size=(args.height, args.width), aux=aux,
                       backbone=args.backbone)
-    model(tf.random.uniform((1, args.height, args.width, 3), dtype=tf.float32)) if random_crop_size is None else model(tf.random.uniform((1, random_crop_size[0], random_crop_size[1], 3), dtype=tf.float32))
+    model(tf.random.uniform((1, args.height, args.width, 3), dtype=tf.float32), True) if random_crop_size is None else model(tf.random.uniform((1, random_crop_size[0], random_crop_size[1], 3), dtype=tf.float32), True)
     model.summary()
     if args.load_model:
         if os.path.exists(os.path.join(args.load_model)):
@@ -177,7 +177,6 @@ with mirrored_strategy.scope():
             print("No file found at {}".format(os.path.join(args.load_model, "saved_model")))
 
 calc_loss = losses.get_loss(name=args.loss)
-cross_entropy_loss = losses.get_loss(name="cross_entropy")
 
 
 def train_step(mini_batch, aux=False, pick=None):
@@ -209,16 +208,16 @@ def val_step(mini_batch, aux=False):
     val_labs = tf.one_hot(mini_batch[1][..., 0], classes)
     if random_crop_size is not None:
         val_labs = tf.image.resize(val_labs, random_crop_size)
-    if aux:
-        losses = [tf.reduce_mean(calc_loss(val_labs, tf.image.resize(train_logit, size=val_labs.shape[
-                                                                                       1:3]))) if n == 0 else args.aux_weight * tf.reduce_mean(
-            calc_loss(
-                val_labs, tf.image.resize(train_logit, size=val_labs.shape[1:3]))) for n, train_logit in
-                  enumerate(val_logits)]
-        val_loss = tf.reduce_sum(losses)
-        val_logits = val_logits[0]
-    else:
-        val_loss = calc_loss(val_labs, val_logits)
+    # if aux:
+    #     losses = [tf.reduce_mean(calc_loss(val_labs, tf.image.resize(train_logit, size=val_labs.shape[
+    #                                                                                    1:3]))) if n == 0 else args.aux_weight * tf.reduce_mean(
+    #         calc_loss(
+    #             val_labs, tf.image.resize(train_logit, size=val_labs.shape[1:3]))) for n, train_logit in
+    #               enumerate(val_logits)]
+    #     val_loss = tf.reduce_sum(losses)
+    #     val_logits = val_logits[0]
+    # else:
+    val_loss = calc_loss(val_labs, val_logits)
     val_loss = tf.reduce_mean(val_loss)
     return val_loss, val_labs, val_logits
 
@@ -330,6 +329,7 @@ for epoch in range(START_EPOCH, EPOCHS):
         # print("Epoch {}: {}/{}, Loss: {}, mIoU: {}".format(epoch, step * batch_size, total_samples,
         #                                                    loss.numpy(), mIoU.result().numpy()))
         write_to_tensorboard(c_step, image_write_step, train_writer, train_logits, mini_batch)
+        break
 
     mIoU.reset_states()
     conf_matrix_list = []

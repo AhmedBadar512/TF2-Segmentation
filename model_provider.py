@@ -6,7 +6,8 @@ _models = {
     'unet': models.UNet,
     'unet_exp': models.UNet_Expanded,
     'deeplabv3': models.Deeplabv3plus,
-    'deeplabv3_exp': models.Deeplabv3PlusExpanded
+    'deeplabv3_exp': models.Deeplabv3PlusExpanded,
+    'bisenetv2': models.BiSeNetv2
 }
 
 

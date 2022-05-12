@@ -101,7 +101,7 @@ class Aggregator(K.layers.Layer):
 
 
 class BiSeNetv2(K.Model):
-    def __init__(self, classes=21, activation='relu', backbone='resnet50', alpha=1.0, seg_channels=64):
+    def __init__(self, classes=21, activation='relu', backbone=None, alpha=1.0, seg_channels=64, **kwargs):
         super(BiSeNetv2, self).__init__()
         self.backbone = backbone
         # =========== Detail Branch =========== #
