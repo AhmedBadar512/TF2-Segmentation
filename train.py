@@ -329,7 +329,6 @@ for epoch in range(START_EPOCH, EPOCHS):
         # print("Epoch {}: {}/{}, Loss: {}, mIoU: {}".format(epoch, step * batch_size, total_samples,
         #                                                    loss.numpy(), mIoU.result().numpy()))
         write_to_tensorboard(c_step, image_write_step, train_writer, train_logits, mini_batch)
-        break
 
     mIoU.reset_states()
     conf_matrix_list = []
