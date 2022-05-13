@@ -1,7 +1,6 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, DepthwiseConv2D
+from tensorflow.keras.layers import Conv2D
 import tensorflow.keras as K
-from models.backbones import get_backbone
 from models.layers import ConvBlock, StemBlock, DWConvBlock
 
 
@@ -29,11 +28,9 @@ class GatherExpandBlock(K.layers.Layer):
         super(GatherExpandBlock, self).__init__()
         self.stride = stride
         self.out_channels = out_channels
-        self.conv3x3_base_left = ConvBlock(out_channels, 3, activation='relu', padding='same')
-        self.conv1x1_base_left = ConvBlock(out_channels, 1, activation='linear', padding='same')
         if self.stride > 1:
             self.dwconv3x3_stride_left = DWConvBlock(6, 3, 2, padding='same')
-            self.dwconv3x3_stride_right = DWConvBlock(6, 3, 2, padding='same')
+            self.dwconv3x3_stride_right = DWConvBlock(1, 3, 2, padding='same')
 
             self.dwconv3x3_base_left = DWConvBlock(1, 3, padding='same')
         else:
@@ -42,9 +39,10 @@ class GatherExpandBlock(K.layers.Layer):
     def build(self, input_shape):
         if self.stride > 1:
             self.conv1x1_stride_right = ConvBlock(self.out_channels, 1, activation='linear', padding='same')
-            self.conv1x1_stride_left = ConvBlock(self.out_channels, 1, activation='linear', padding='same')
+            self.conv1x1_base_left = ConvBlock(self.out_channels, 1, activation='linear', padding='same')
         else:
             self.conv1x1_base_left = ConvBlock(input_shape[-1], 1, activation='linear', padding='same')
+        self.conv3x3_base_left = ConvBlock(input_shape[-1], 3, activation='relu', padding='same')
 
     def call(self, inputs, *args, **kwargs):
         if self.stride > 1:
@@ -67,6 +65,7 @@ class Aggregator(K.layers.Layer):
         super(Aggregator, self).__init__()
         self.bn = K.layers.BatchNormalization()
         self.avg_pool = K.layers.AveragePooling2D(3, 2, padding='same')
+        self.upsample = K.layers.UpSampling2D(4)
         # ------ Detail ------- #
         self.detail_dwconv_a = DWConvBlock(1, 3, padding='same')
         # ------ Semantic ------- #
@@ -91,13 +90,21 @@ class Aggregator(K.layers.Layer):
         x_b = self.avg_pool(x_b)
 
         y_a = self.semantic_3x3conv_a(semantic)
-        y_a = tf.nn.sigmoid(tf.image.resize(y_a, tf.shape(detail)[1:3]))
+        y_a = tf.nn.sigmoid(self.upsample(y_a))
         y_b = self.semantic_dwconv_b(semantic)
         y_b = tf.nn.sigmoid(self.semantic_1x1conv_b(y_b))
 
         a = y_a * x_a
-        b = tf.image.resize(y_b * x_b, tf.shape(a)[1:3])
+        # b = tf.image.resize(y_b * x_b, tf.shape(a)[1:3])
+        b = self.upsample(y_b * x_b)
         return self.final_conv(a + b)
+
+
+class SegHead(K.layers.Layer):
+    def __init__(self, mid_channels, aux=True):
+        super(SegHead, self).__init__()
+        self.conv = ConvBlock(mid_channels, 3, 1, padding='same')
+        self.drop = K.layers.Dropout(0.1)
 
 
 class BiSeNetv2(K.Model):
@@ -120,7 +127,7 @@ class BiSeNetv2(K.Model):
             ConvBlock(128, 3, 1, padding='same', activation=activation)
         ])
         # =========== Semantic Branch =========== #
-        self.stem = StemBlock(int(16 * alpha))
+        self.stem = StemBlock()
         self.ge1 = K.Sequential([
             GatherExpandBlock(stride=2, out_channels=int(32 * alpha)),
             GatherExpandBlock(out_channels=int(32 * alpha))
@@ -159,14 +166,23 @@ class BiSeNetv2(K.Model):
 
         final_feat = self.seg_head(tf.image.resize(self.aggregator((x1_s3, x2_ce)), original_size))
         if training:
-            out_s3 = tf.image.resize(self.seg_head1(x2_s3), original_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-            out_s4 = tf.image.resize(self.seg_head2(x2_s4), original_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-            out_s5 = tf.image.resize(self.seg_head3(x2_s5), original_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+            out_s3 = tf.image.resize(self.seg_head1(x2_s3), original_size, method=tf.image.ResizeMethod.BILINEAR)
+            out_s4 = tf.image.resize(self.seg_head2(x2_s4), original_size, method=tf.image.ResizeMethod.BILINEAR)
+            out_s5 = tf.image.resize(self.seg_head3(x2_s5), original_size, method=tf.image.ResizeMethod.BILINEAR)
             return final_feat, out_s3, out_s4, out_s5
         return final_feat
 
 if __name__ == "__main__":
-    x = tf.random.normal((1, 512, 1024, 3))
+    import tqdm
+    tf.keras.mixed_precision.set_global_policy('mixed_float16')
+    bs = 7
+    x = tf.random.normal((bs, 512, 1024, 3))
     bisenet = BiSeNetv2(classes=19)
-    z = bisenet(x, True)
-    [print(g.shape) for g in z]
+    optimizer = K.optimizers.SGD()
+    for _ in tqdm.tqdm(range(1000)):
+        with tf.GradientTape() as tape:
+            final, z1, z2, z3 = bisenet(x, True)
+            # final = bisenet(x, False)
+            loss = 100 * tf.reduce_mean(tf.cast(final, tf.float32) - tf.random.normal((bs, 512, 1024, 19)))
+        vars = bisenet.trainable_variables
+        optimizer.apply_gradients(zip(tape.gradient(loss, vars), vars))
