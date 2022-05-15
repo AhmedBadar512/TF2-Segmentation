@@ -37,7 +37,6 @@ class ConvBlock(K.layers.Layer):
                  use_bias=True,
                  norm_layer="batch",
                  activation='linear',
-                 sn=False,
                  dilation_rate=(1, 1),
                  **kwargs):
         super(ConvBlock, self).__init__()
@@ -48,13 +47,9 @@ class ConvBlock(K.layers.Layer):
                                       dilation_rate=dilation_rate,
                                       use_bias=use_bias,
                                       **kwargs)
-        if sn:
-            self.conv2d = tfa.layers.SpectralNormalization(self.conv2d)
         self.activation = K.layers.Activation(activation)
         if norm_layer == 'batch':
             self.normalization = K.layers.BatchNormalization()
-        elif norm_layer == 'instance':
-            self.normalization = tfa.layers.InstanceNormalization()
         else:
             self.normalization = tf.identity
 
@@ -91,8 +86,6 @@ class DWConvBlock(K.layers.Layer):
         self.activation = K.layers.Activation(activation)
         if norm_layer == 'batch':
             self.normalization = K.layers.BatchNormalization()
-        elif norm_layer == 'instance':
-            self.normalization = tfa.layers.InstanceNormalization()
         else:
             self.normalization = tf.identity
 

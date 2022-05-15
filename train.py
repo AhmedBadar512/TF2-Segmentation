@@ -15,6 +15,7 @@ from model_provider import get_model
 from utils.create_seg_tfrecords import TFRecordsSeg
 from visualization_dicts import gpu_cs_labels, generate_random_colors, gpu_random_labels
 
+# tf.keras.mixed_precision.set_global_policy('mixed_float16')
 physical_devices = tf.config.experimental.list_physical_devices("GPU")
 for gpu in physical_devices:
     tf.config.experimental.set_memory_growth(gpu, True)
@@ -33,7 +34,7 @@ args.add_argument("-opt", "--optimizer", type=str, default="Adam", help="Select 
 args.add_argument("-lrs", "--lr_scheduler", type=str, default="exp_decay", help="Select learning rate scheduler",
                   choices=["poly", "exp_decay"])
 args.add_argument("-e", "--epochs", type=int, default=100, help="Number of epochs to train")
-args.add_argument("--lr", type=float, default=1e-5, help="Initial learning rate")
+args.add_argument("--lr", type=float, default=1e-3, help="Initial learning rate")
 args.add_argument("--momentum", type=float, default=0.9, help="Momentum")
 args.add_argument("-l", "--logging_freq", type=int, default=10, help="Add to tfrecords after this many steps")
 args.add_argument("--loss", type=str, default="cross_entropy",
@@ -55,7 +56,7 @@ args.add_argument("-sb", "--shuffle_buffer", type=int, default=128, help="Size o
 args.add_argument("--width", type=int, default=1024, help="Size of the shuffle buffer")
 args.add_argument("--height", type=int, default=512, help="Size of the shuffle buffer")
 args.add_argument("--aux", action="store_true", default=False, help="Auxiliary losses included if true")
-args.add_argument("--aux_weight", type=float, default=0.25, help="Auxiliary losses included if true")
+args.add_argument("--aux_weight", type=float, default=0.2, help="Auxiliary losses included if true")
 args.add_argument("--random_seed", type=int, default=1, help="Set random seed to this if true")
 args.add_argument("--bg_class", type=int, default=0, help="Select bg class for visualization shown as black")
 # ============ Augmentation Arguments ===================== #
@@ -200,26 +201,26 @@ def train_step(mini_batch, aux=False, pick=None):
         trainable_vars = model.trainable_variables
     grads = tape.gradient(loss, trainable_vars)
     optimizer.apply_gradients(zip(grads, trainable_vars))
-    return loss, train_labs, train_logits
+    return loss, train_labs, tf.image.resize(train_logits, tf.shape(train_labs)[1:3], method=tf.image.ResizeMethod.BILINEAR)
 
 
 def val_step(mini_batch, aux=False):
-    val_logits = model((mini_batch[0] / 127.5) - 1, training=False) if random_crop_size is None else model((tf.image.resize(mini_batch[0], random_crop_size) / 127.5) - 1, training=False)
+    val_logits = model((mini_batch[0] / 127.5) - 1, training=True) if random_crop_size is None else model((tf.image.resize(mini_batch[0], random_crop_size) / 127.5) - 1, training=True)
     val_labs = tf.one_hot(mini_batch[1][..., 0], classes)
     if random_crop_size is not None:
         val_labs = tf.image.resize(val_labs, random_crop_size)
-    # if aux:
-    #     losses = [tf.reduce_mean(calc_loss(val_labs, tf.image.resize(train_logit, size=val_labs.shape[
-    #                                                                                    1:3]))) if n == 0 else args.aux_weight * tf.reduce_mean(
-    #         calc_loss(
-    #             val_labs, tf.image.resize(train_logit, size=val_labs.shape[1:3]))) for n, train_logit in
-    #               enumerate(val_logits)]
-    #     val_loss = tf.reduce_sum(losses)
-    #     val_logits = val_logits[0]
-    # else:
-    val_loss = calc_loss(val_labs, val_logits)
+    if aux:
+        losses = [tf.reduce_mean(calc_loss(val_labs, tf.image.resize(train_logit, size=val_labs.shape[
+                                                                                       1:3]))) if n == 0 else args.aux_weight * tf.reduce_mean(
+            calc_loss(
+                val_labs, tf.image.resize(train_logit, size=val_labs.shape[1:3]))) for n, train_logit in
+                  enumerate(val_logits)]
+        val_loss = tf.reduce_sum(losses)
+        val_logits = val_logits[0]
+    else:
+        val_loss = calc_loss(val_labs, val_logits)
     val_loss = tf.reduce_mean(val_loss)
-    return val_loss, val_labs, val_logits
+    return val_loss, val_labs, tf.image.resize(val_logits, tf.shape(val_labs)[1:3], method=tf.image.ResizeMethod.BILINEAR)
 
 
 @tf.function
@@ -231,6 +232,8 @@ def distributed_train_step(dist_inputs):
         return loss, \
                tf.concat(train_labs.values, axis=0), \
                tf.concat(train_logits.values, axis=0)
+               # tf.concat(train_labs.values, axis=0), \
+               # tf.concat(train_logits.values, axis=0)
     else:
         return loss, \
                train_labs, \
@@ -268,8 +271,10 @@ else:
 
 def write_summary_images(batch, logits):
     if len(physical_devices) > 1:
-        tf.summary.image("images", tf.concat(batch[0].values, axis=0) / 255, step=c_step)
-        processed_labs = tf.concat(batch[1].values, axis=0)
+        # tf.summary.image("images", tf.concat(batch[0].values, axis=0) / 255, step=c_step)
+        # processed_labs = tf.concat(batch[1].values, axis=0)
+        tf.summary.image("images", batch[0].values[0] / 255, step=c_step)
+        processed_labs = batch[1].values[0]
     else:
         tf.summary.image("images", batch[0] / 255, step=c_step)
         processed_labs = batch[1]

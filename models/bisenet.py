@@ -95,20 +95,38 @@ class Aggregator(K.layers.Layer):
         y_b = tf.nn.sigmoid(self.semantic_1x1conv_b(y_b))
 
         a = y_a * x_a
-        # b = tf.image.resize(y_b * x_b, tf.shape(a)[1:3])
         b = self.upsample(y_b * x_b)
         return self.final_conv(a + b)
 
 
 class SegHead(K.layers.Layer):
-    def __init__(self, mid_channels, aux=True):
+    def __init__(self, n_classes=19, mid_channels=64, upfactor=8, aux=True):
         super(SegHead, self).__init__()
         self.conv = ConvBlock(mid_channels, 3, 1, padding='same')
         self.drop = K.layers.Dropout(0.1)
+        self.upfactor = upfactor
+        self.aux = aux
+        if self.aux:
+            self.conv_aux = K.Sequential([
+                K.layers.UpSampling2D(2),
+                ConvBlock(upfactor * upfactor, 3, 1, padding='same'),
+            ])
+            upfactor //= 2
+        self.conv_final = K.layers.Conv2D(n_classes, 1, 1)
+        # self.upsample = K.layers.UpSampling2D(upfactor, interpolation="bilinear")
+
+    def call(self, inputs, **kwargs):
+        x = self.conv(inputs)
+        x = self.drop(x)
+        if self.aux:
+            x = self.conv_aux(x)
+        return self.conv_final(x)
+        # else:
+        #     return self.upsample(self.conv_final(x))
 
 
 class BiSeNetv2(K.Model):
-    def __init__(self, classes=21, activation='relu', backbone=None, alpha=1.0, seg_channels=64, **kwargs):
+    def __init__(self, classes=21, activation='relu', backbone=None, alpha=1.0, seg_channels=128, **kwargs):
         super(BiSeNetv2, self).__init__()
         self.backbone = backbone
         # =========== Detail Branch =========== #
@@ -144,15 +162,15 @@ class BiSeNetv2(K.Model):
         ])
         self.ce = ContextEmbeddingBlock()
         # =========== Segmentation Head =========== #
-        self.seg_head = K.Sequential([ConvBlock(seg_channels, 3, padding='same'), K.layers.Conv2D(classes, 1, padding='same')])
-        self.seg_head1 = K.Sequential([ConvBlock(seg_channels, 3, padding='same'), K.layers.Conv2D(classes, 1, padding='same')])
-        self.seg_head2 = K.Sequential([ConvBlock(seg_channels, 3, padding='same'), K.layers.Conv2D(classes, 1, padding='same')])
-        self.seg_head3 = K.Sequential([ConvBlock(seg_channels, 3, padding='same'), K.layers.Conv2D(classes, 1, padding='same')])
+        self.seg_head = SegHead(classes, seg_channels, 8, aux=False)
+        self.aux_head1 = SegHead(classes, seg_channels, 4, aux=True)
+        self.aux_head2 = SegHead(classes, seg_channels, 8, aux=True)
+        self.aux_head3 = SegHead(classes, seg_channels, 16, aux=True)
+        self.aux_head4 = SegHead(classes, seg_channels, 32, aux=True)
         # ========== Aggregation Head ============ #
         self.aggregator = Aggregator()
 
-    def call(self, inputs, training=None, mask=None):
-        original_size = tf.shape(inputs)[1:3]
+    def call(self, inputs, training=True, mask=None):
         # ========= Detail ============ #
         x1_s1 = self.detail_convblock1(inputs)         # Stride /2
         x1_s2 = self.detail_convblock2(x1_s1)             # Stride /4
@@ -161,28 +179,38 @@ class BiSeNetv2(K.Model):
         x2_s2 = self.stem(inputs)                   # Stride /4
         x2_s3 = self.ge1(x2_s2)                     # Stride /8
         x2_s4 = self.ge2(x2_s3)                     # Stride /16
-        x2_s5 = self.ge3(x2_s4)                     # Stride /32
+        x2_s5 = self.ge3(x2_s4)                     # Stride /32z
         x2_ce = self.ce(x2_s5)
 
-        final_feat = self.seg_head(tf.image.resize(self.aggregator((x1_s3, x2_ce)), original_size))
+        final_feat = self.aggregator((x1_s3, x2_ce))
+        final_feat = self.seg_head(final_feat)
         if training:
-            out_s3 = tf.image.resize(self.seg_head1(x2_s3), original_size, method=tf.image.ResizeMethod.BILINEAR)
-            out_s4 = tf.image.resize(self.seg_head2(x2_s4), original_size, method=tf.image.ResizeMethod.BILINEAR)
-            out_s5 = tf.image.resize(self.seg_head3(x2_s5), original_size, method=tf.image.ResizeMethod.BILINEAR)
-            return final_feat, out_s3, out_s4, out_s5
+            out_s2 = self.aux_head1(x2_s2)
+            out_s3 = self.aux_head2(x2_s3)
+            out_s4 = self.aux_head3(x2_s3)
+            out_s5 = self.aux_head4(x2_s5)
+            return final_feat, out_s2, out_s3, out_s4, out_s5
         return final_feat
 
 if __name__ == "__main__":
     import tqdm
+
+    physical_devices = tf.config.experimental.list_physical_devices("GPU")
+    for gpu in physical_devices:
+        tf.config.experimental.set_memory_growth(gpu, True)
     tf.keras.mixed_precision.set_global_policy('mixed_float16')
-    bs = 7
-    x = tf.random.normal((bs, 512, 1024, 3))
+    bs = 14
+    x = tf.random.normal((bs, 1024, 2048, 3))
     bisenet = BiSeNetv2(classes=19)
+    # bisenet.build((bs, 1024, 2048, 3))
     optimizer = K.optimizers.SGD()
-    for _ in tqdm.tqdm(range(1000)):
-        with tf.GradientTape() as tape:
-            final, z1, z2, z3 = bisenet(x, True)
-            # final = bisenet(x, False)
-            loss = 100 * tf.reduce_mean(tf.cast(final, tf.float32) - tf.random.normal((bs, 512, 1024, 19)))
-        vars = bisenet.trainable_variables
-        optimizer.apply_gradients(zip(tape.gradient(loss, vars), vars))
+    final, z1, z2, z3 = bisenet(x, True)
+    bisenet.summary()
+    # for _ in tqdm.tqdm(range(1000)):
+    #     final, z1, z2, z3 = bisenet(x, True)
+        # with tf.GradientTape() as tape:
+        #     final, z1, z2, z3 = bisenet(x, True)
+        #     # final = bisenet(x, False)
+        #     loss = 100 * tf.reduce_mean(tf.cast(final, tf.float32) - tf.random.normal((bs, 512, 1024, 19)))
+        # vars = bisenet.trainable_variables
+        # optimizer.apply_gradients(zip(tape.gradient(loss, vars), vars))
