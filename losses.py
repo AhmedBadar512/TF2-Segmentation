@@ -6,19 +6,19 @@ from tensorflow.keras.applications.vgg19 import preprocess_input
 
 def get_loss(name='cross_entropy'):
     if name == 'cross_entropy':
-        loss_func = K.losses.CategoricalCrossentropy(from_logits=True, reduction=K.losses.Reduction.NONE)
+        loss_func = K.losses.CategoricalCrossentropy(from_logits=True, reduction=K.losses.Reduction.AUTO)
     elif name == 'focal_loss':
-        loss_func = tfa.losses.SigmoidFocalCrossEntropy(from_logits=True, reduction=K.losses.Reduction.NONE)
+        loss_func = tfa.losses.SigmoidFocalCrossEntropy(from_logits=True, reduction=K.losses.Reduction.AUTO)
     elif name == 'binary_crossentropy':
-        loss_func = K.losses.BinaryCrossentropy(from_logits=True, reduction=K.losses.Reduction.NONE)
+        loss_func = K.losses.BinaryCrossentropy(from_logits=True, reduction=K.losses.Reduction.AUTO)
     elif name == "MSE":
         loss_func = K.losses.MSE
     elif name == "RMI":
-        loss_func = RMI(rmi_radius=3, reduction=K.losses.Reduction.NONE, from_logits=True)
+        loss_func = RMI(rmi_radius=3, reduction=K.losses.Reduction.AUTO, from_logits=True)
     elif name == "Wasserstein":
-        loss_func = WasserSteinLoss(reduction=K.losses.Reduction.NONE)
+        loss_func = WasserSteinLoss(reduction=K.losses.Reduction.AUTO)
     elif name == "Hinge":
-        loss_func = WasserSteinLoss(reduction=K.losses.Reduction.NONE)
+        loss_func = WasserSteinLoss(reduction=K.losses.Reduction.AUTO)
     elif name == "PatchNCELoss":
         loss_func = PatchNCELoss(nce_temp=0.07, nce_lambda=1.0)
     elif name == "VGGLoss":
