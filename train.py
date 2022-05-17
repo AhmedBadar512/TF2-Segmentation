@@ -15,12 +15,6 @@ from model_provider import get_model
 from utils.create_seg_tfrecords import TFRecordsSeg
 from visualization_dicts import gpu_cs_labels, generate_random_colors, gpu_random_labels
 
-# tf.keras.mixed_precision.set_global_policy('mixed_float16')
-physical_devices = tf.config.experimental.list_physical_devices("GPU")
-for gpu in physical_devices:
-    tf.config.experimental.set_memory_growth(gpu, True)
-mirrored_strategy = tf.distribute.MirroredStrategy()
-
 args = argparse.ArgumentParser(description="Train a network with specific settings")
 args.add_argument("--backbone", type=str, default="",
                   help="Backbone in case applicable",
@@ -44,7 +38,7 @@ args.add_argument("-bs", "--batch_size", type=int, default=4, help="Size of mini
 args.add_argument("-si", "--save_interval", type=int, default=5, help="Save interval for model")
 args.add_argument("-wis", "--write_image_summary_steps", type=int, default=50, help="Add images to tfrecords "
 
-                                                                                   "after these many logging steps")
+                                                                                    "after these many logging steps")
 args.add_argument("-m", "--model", type=str, default="bisenetv2", help="Select model")
 args.add_argument("-l_m", "--load_model", type=str,
                   default=None,
@@ -57,25 +51,35 @@ args.add_argument("--width", type=int, default=1024, help="Size of the shuffle b
 args.add_argument("--height", type=int, default=512, help="Size of the shuffle buffer")
 args.add_argument("--aux", action="store_true", default=False, help="Auxiliary losses included if true")
 args.add_argument("--aux_weight", type=float, default=0.2, help="Auxiliary losses included if true")
-args.add_argument("--random_seed", type=int, default=1, help="Set random seed to this if true")
+args.add_argument("--random_seed", type=int, default=512, help="Set random seed to this if true")
 args.add_argument("--bg_class", type=int, default=0, help="Select bg class for visualization shown as black")
+args.add_argument("--fp16", action="store_true", default=False, help="Give to enable mixed precision training.")
 # ============ Augmentation Arguments ===================== #
 args.add_argument("--flip_up_down", action="store_true", default=False, help="Randomly flip images up and down")
 args.add_argument("--flip_left_right", action="store_true", default=False, help="Randomly flip images right left")
-args.add_argument("--random_crop_height", type=int, default=None,
-                  help="Height of random crop, random_crop_width must be given with this")
-args.add_argument("--random_crop_width", type=int, default=None,
-                  help="Width of random crop, random_crop_height must be given with this")
+args.add_argument("--random_crop_min", type=float, default=None,
+                  help="minimum value for crop height/width relative to original image")
+args.add_argument("--random_crop_max", type=float, default=None,
+                  help="Width of random crop as ratio of original width, random_crop_height must be given with this")
 args.add_argument("--random_hue", action="store_true", default=False, help="Randomly change hue")
 args.add_argument("--random_saturation", action="store_true", default=False, help="Randomly change saturation")
 args.add_argument("--random_brightness", action="store_true", default=False, help="Randomly change brightness")
 args.add_argument("--random_contrast", action="store_true", default=False, help="Randomly change contrast")
 args.add_argument("--random_quality", action="store_true", default=False, help="Randomly change jpeg quality")
+args.add_argument("--all_augs", action="store_true", default=False, help="Add all augmentations except flip_up_down")
 args = args.parse_args()
 
+if args.fp16:
+    tf.keras.mixed_precision.set_global_policy('mixed_float16')
+
+physical_devices = tf.config.experimental.list_physical_devices("GPU")
+for gpu in physical_devices:
+    tf.config.experimental.set_memory_growth(gpu, True)
+mirrored_strategy = tf.distribute.MirroredStrategy(cross_device_ops=tf.distribute.NcclAllReduce())
+
 tf.random.set_seed(args.random_seed)
-random_crop_size = (args.random_crop_width, args.random_crop_height) \
-    if args.random_crop_width is not None and args.random_crop_height is not None \
+random_crop_size = (args.random_crop_min, args.random_crop_max) \
+    if args.random_crop_max is not None and args.random_crop_min is not None \
     else None
 backbone = args.backbone
 dataset_name = args.dataset
@@ -93,13 +97,14 @@ write_image_summary_steps = args.write_image_summary_steps
 EPOCHS = args.epochs
 time = str(datetime.datetime.now())
 time = time.translate(str.maketrans('', '', string.punctuation)).replace(" ", "-")[:-8]
-logdir = os.path.join(args.save_dir, "{}_epochs-{}_{}_bs-{}_{}_lr_{}-{}_{}_{}_{}".format(dataset_name, epochs, args.loss,
-                                                                                      batch_size,
-                                                                                      optimizer_name, lr,
-                                                                                      args.lr_scheduler,
-                                                                                      backbone,
-                                                                                      model_name,
-                                                                                      time))
+logdir = os.path.join(args.save_dir,
+                      "{}_epochs-{}_{}_bs-{}_{}_lr_{}-{}_{}_{}_{}".format(dataset_name, epochs, args.loss,
+                                                                          batch_size,
+                                                                          optimizer_name, lr,
+                                                                          args.lr_scheduler,
+                                                                          backbone,
+                                                                          model_name,
+                                                                          time))
 
 # =========== Load Dataset ============ #
 
@@ -117,6 +122,14 @@ dataset_train = TFRecordsSeg(
 dataset_validation = TFRecordsSeg(
     tfrecord_path=
     "{}/{}_val.tfrecords".format(args.tf_record_path, dataset_name)).read_tfrecords()
+if args.all_augs:
+    args.flip_left_right = True
+    random_crop_size = (0.5, 0.95)
+    args.random_hue = True
+    args.random_saturation = True
+    args.random_brightness = True
+    args.random_contrast = True
+
 augmentor = lambda image, label: aug.augment_seg(image, label,
                                                  args.flip_up_down,
                                                  args.flip_left_right,
@@ -136,12 +149,13 @@ assert dataset_validation is not None, "Either test or validation dataset should
 eval_dataset = dataset_validation
 get_images_processed = lambda image, label: get_images_custom(image, label, (args.height, args.width), cs_19)
 
-processed_train = dataset_train.map(get_images_processed)
-processed_train = processed_train.map(augmentor)
+processed_train = dataset_train.map(augmentor)
+processed_train = processed_train.map(get_images_processed)
 processed_val = dataset_validation.map(get_images_processed)
-processed_train = processed_train.shuffle(args.shuffle_buffer).batch(batch_size, drop_remainder=True).prefetch(
+processed_train = processed_train.shuffle(args.shuffle_buffer).batch(batch_size, drop_remainder=True).repeat(
+    EPOCHS).prefetch(
     tf.data.experimental.AUTOTUNE)
-processed_val = processed_val.shuffle(args.shuffle_buffer).batch(batch_size, drop_remainder=True) \
+processed_val = processed_val.batch(batch_size, drop_remainder=True) \
     if (dataset_validation is not None) else None
 processed_train = mirrored_strategy.experimental_distribute_dataset(processed_train)
 processed_val = mirrored_strategy.experimental_distribute_dataset(processed_val)
@@ -167,7 +181,7 @@ with mirrored_strategy.scope():
         optimizer = K.optimizers.SGD(learning_rate=lr_scheduler, momentum=momentum)
     model = get_model(model_name, classes=classes, in_size=(args.height, args.width), aux=aux,
                       backbone=args.backbone)
-    model(tf.random.uniform((1, args.height, args.width, 3), dtype=tf.float32), True) if random_crop_size is None else model(tf.random.uniform((1, random_crop_size[0], random_crop_size[1], 3), dtype=tf.float32), True)
+    model(tf.random.uniform((1, args.height, args.width, 3), dtype=tf.float32), True)
     model.summary()
     if args.load_model:
         if os.path.exists(os.path.join(args.load_model)):
@@ -182,7 +196,7 @@ calc_loss = losses.get_loss(name=args.loss)
 
 def train_step(mini_batch, aux=False, pick=None):
     with tf.GradientTape() as tape:
-        train_logits = model((mini_batch[0] / 127.5) - 1, training=True)
+        train_logits = model(tf.image.per_image_standardization(mini_batch[0]), training=True)
         train_labs = tf.one_hot(mini_batch[1][..., 0], classes)
         if aux:
             losses = [tf.reduce_mean(calc_loss(train_labs, tf.image.resize(train_logit, size=train_labs.shape[
@@ -201,14 +215,14 @@ def train_step(mini_batch, aux=False, pick=None):
         trainable_vars = model.trainable_variables
     grads = tape.gradient(loss, trainable_vars)
     optimizer.apply_gradients(zip(grads, trainable_vars))
-    return loss, train_labs, tf.image.resize(train_logits, tf.shape(train_labs)[1:3], method=tf.image.ResizeMethod.BILINEAR)
+    return loss, train_labs, tf.image.resize(train_logits, tf.shape(train_labs)[1:3],
+                                             method=tf.image.ResizeMethod.BILINEAR)
 
 
 def val_step(mini_batch, aux=False):
-    val_logits = model((mini_batch[0] / 127.5) - 1, training=True) if random_crop_size is None else model((tf.image.resize(mini_batch[0], random_crop_size) / 127.5) - 1, training=True)
+    val_logits = model(tf.image.per_image_standardization(mini_batch[0]),
+                       training=True)
     val_labs = tf.one_hot(mini_batch[1][..., 0], classes)
-    if random_crop_size is not None:
-        val_labs = tf.image.resize(val_labs, random_crop_size)
     if aux:
         losses = [tf.reduce_mean(calc_loss(val_labs, tf.image.resize(train_logit, size=val_labs.shape[
                                                                                        1:3]))) if n == 0 else args.aux_weight * tf.reduce_mean(
@@ -220,7 +234,8 @@ def val_step(mini_batch, aux=False):
     else:
         val_loss = calc_loss(val_labs, val_logits)
     val_loss = tf.reduce_mean(val_loss)
-    return val_loss, val_labs, tf.image.resize(val_logits, tf.shape(val_labs)[1:3], method=tf.image.ResizeMethod.BILINEAR)
+    return val_loss, val_labs, tf.image.resize(val_logits, tf.shape(val_labs)[1:3],
+                                               method=tf.image.ResizeMethod.BILINEAR)
 
 
 @tf.function
@@ -232,8 +247,6 @@ def distributed_train_step(dist_inputs):
         return loss, \
                tf.concat(train_labs.values, axis=0), \
                tf.concat(train_logits.values, axis=0)
-               # tf.concat(train_labs.values, axis=0), \
-               # tf.concat(train_logits.values, axis=0)
     else:
         return loss, \
                train_labs, \
@@ -274,7 +287,7 @@ def write_summary_images(batch, logits):
         # tf.summary.image("images", tf.concat(batch[0].values, axis=0) / 255, step=c_step)
         # processed_labs = tf.concat(batch[1].values, axis=0)
         tf.summary.image("images", batch[0].values[0] / 255, step=c_step)
-        processed_labs = batch[1].values[0]
+        processed_labs = tf.concat(batch[1].values[0], axis=0)
     else:
         tf.summary.image("images", batch[0] / 255, step=c_step)
         processed_labs = batch[1]
@@ -306,7 +319,7 @@ def write_to_tensorboard(curr_step, image_write_step, writer, logits, batch):
                 conf_matrix = tf.math.confusion_matrix(gt, pred,
                                                        num_classes=classes)
                 conf_matrix = tf.cast(conf_matrix, dtype=tf.float64) / (
-                            tf.cast(tf.reduce_sum(conf_matrix, axis=1), dtype=tf.float64) + 1e-6)
+                        tf.cast(tf.reduce_sum(conf_matrix, axis=1), dtype=tf.float64) + 1e-6)
                 tf.summary.image("conf_matrix", conf_matrix[tf.newaxis, ..., tf.newaxis], step=curr_step)
                 write_summary_images(batch, logits)
     with writer.as_default():
@@ -314,27 +327,8 @@ def write_to_tensorboard(curr_step, image_write_step, writer, logits, batch):
         tf.summary.scalar("Learning Rate", tmp, curr_step)
 
 
-for epoch in range(START_EPOCH, EPOCHS):
-    print("\n ----------- Epoch {} --------------\n".format(epoch))
-    step = 0
-    if epoch % args.save_interval == 0:
-        model.save_weights(os.path.join(logdir, model_name, str(epoch), "saved_model"))
-        print("Model at Epoch {}, saved at {}".format(epoch, os.path.join(logdir, model_name, str(epoch))))
-    for mini_batch in tqdm.tqdm(processed_train, total=total_samples // args.batch_size):
-        c_step = (epoch * total_samples // args.batch_size) + step
-        loss, train_labs, train_logits = distributed_train_step(mini_batch)
-        step += 1
-
-        # ======== mIoU calculation ==========
-        mIoU.reset_states()
-        gt = tf.reshape(tf.argmax(train_labs, axis=-1), -1)
-        pred = tf.reshape(tf.argmax(train_logits, axis=-1), -1)
-        mIoU.update_state(gt, pred)
-        # ====================================
-        # print("Epoch {}: {}/{}, Loss: {}, mIoU: {}".format(epoch, step * batch_size, total_samples,
-        #                                                    loss.numpy(), mIoU.result().numpy()))
-        write_to_tensorboard(c_step, image_write_step, train_writer, train_logits, mini_batch)
-
+def evaluate():
+    global val_writer
     mIoU.reset_states()
     conf_matrix_list = []
     total_val_loss = []
@@ -357,7 +351,33 @@ for epoch in range(START_EPOCH, EPOCHS):
                           step=c_step)
         if val_mini_batch is not None:
             conf_matrix = tf.cast(conf_matrix, dtype=tf.float64) / (
-                        tf.cast(tf.reduce_sum(conf_matrix, axis=1), dtype=tf.float64) + 1e-6)
+                    tf.cast(tf.reduce_sum(conf_matrix, axis=1), dtype=tf.float64) + 1e-6)
             tf.summary.image("conf_matrix", conf_matrix[tf.newaxis, ..., tf.newaxis], step=c_step)
             write_summary_images(val_mini_batch, val_logits)
     print("Val Epoch {}: {}, mIoU: {}".format(epoch, val_loss, mIoU.result().numpy()))
+
+
+epoch = 0
+while epoch < EPOCHS:
+    print("\n ----------- Epoch {} --------------\n".format(epoch))
+    step = 0
+    if epoch % args.save_interval == 0:
+        model.save_weights(os.path.join(logdir, model_name, str(epoch), "saved_model"))
+        print("Model at Epoch {}, saved at {}".format(epoch, os.path.join(logdir, model_name, str(epoch))))
+    for mini_batch in tqdm.tqdm(processed_train, total=total_samples // args.batch_size):
+        c_step = (epoch * total_samples // args.batch_size) + step
+        loss, train_labs, train_logits = distributed_train_step(mini_batch)
+        step += 1
+
+        # ======== mIoU calculation ==========
+        mIoU.reset_states()
+        gt = tf.reshape(tf.argmax(train_labs, axis=-1), -1)
+        pred = tf.reshape(tf.argmax(train_logits, axis=-1), -1)
+        mIoU.update_state(gt, pred)
+        # ====================================
+        write_to_tensorboard(c_step, image_write_step, train_writer, train_logits, mini_batch)
+        if step == total_samples // args.batch_size:
+            epoch += 1
+            break
+
+    evaluate()

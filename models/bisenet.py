@@ -162,7 +162,7 @@ class BiSeNetv2(K.Model):
         ])
         self.ce = ContextEmbeddingBlock()
         # =========== Segmentation Head =========== #
-        self.seg_head = SegHead(classes, seg_channels, 8, aux=False)
+        self.seg_head = SegHead(classes, 1024, 8, aux=False)
         self.aux_head1 = SegHead(classes, seg_channels, 4, aux=True)
         self.aux_head2 = SegHead(classes, seg_channels, 8, aux=True)
         self.aux_head3 = SegHead(classes, seg_channels, 16, aux=True)
