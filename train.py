@@ -284,10 +284,10 @@ else:
 
 def write_summary_images(batch, logits):
     if len(physical_devices) > 1:
-        # tf.summary.image("images", tf.concat(batch[0].values, axis=0) / 255, step=c_step)
-        # processed_labs = tf.concat(batch[1].values, axis=0)
-        tf.summary.image("images", batch[0].values[0] / 255, step=c_step)
-        processed_labs = tf.concat(batch[1].values[0], axis=0)
+        tf.summary.image("images", tf.concat(batch[0].values, axis=0) / 255, step=c_step)
+        processed_labs = tf.concat(batch[1].values, axis=0)
+        # tf.summary.image("images", batch[0].values[0] / 255, step=c_step)
+        # processed_labs = tf.concat(batch[1].values[0], axis=0)
     else:
         tf.summary.image("images", batch[0] / 255, step=c_step)
         processed_labs = batch[1]
