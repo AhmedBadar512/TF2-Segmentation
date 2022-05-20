@@ -77,7 +77,7 @@ class UNet(K.Model):
         self.up9 = K.layers.Conv2DTranspose(base_channels, (3, 3), strides=(2, 2), padding="same")
         self.conv10 = K.layers.Conv2D(classes, 1, strides=1, padding="same")
 
-    def call(self, inputs, training=None, mask=None):
+    def call(self, inputs, training=None, mask=None, aux=False):
         c1 = self.in_conv(inputs)
         c1 = self.bn[0](c1, training=training)
         c1 = self.dropout1(c1)

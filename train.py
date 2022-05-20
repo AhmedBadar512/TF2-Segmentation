@@ -75,7 +75,7 @@ if args.fp16:
 physical_devices = tf.config.experimental.list_physical_devices("GPU")
 for gpu in physical_devices:
     tf.config.experimental.set_memory_growth(gpu, True)
-mirrored_strategy = tf.distribute.MirroredStrategy(cross_device_ops=tf.distribute.NcclAllReduce())
+mirrored_strategy = tf.distribute.MirroredStrategy()
 
 tf.random.set_seed(args.random_seed)
 random_crop_size = (args.random_crop_min, args.random_crop_max) \
@@ -196,7 +196,7 @@ calc_loss = losses.get_loss(name=args.loss)
 
 def train_step(mini_batch, aux=False, pick=None):
     with tf.GradientTape() as tape:
-        train_logits = model(tf.image.per_image_standardization(mini_batch[0]), training=True)
+        train_logits = model(tf.image.per_image_standardization(mini_batch[0]), training=True, aux=aux)
         train_labs = tf.one_hot(mini_batch[1][..., 0], classes)
         if aux:
             losses = [tf.reduce_mean(calc_loss(train_labs, tf.image.resize(train_logit, size=train_labs.shape[
@@ -221,7 +221,7 @@ def train_step(mini_batch, aux=False, pick=None):
 
 def val_step(mini_batch, aux=False):
     val_logits = model(tf.image.per_image_standardization(mini_batch[0]),
-                       training=True)
+                       training=True, aux=aux)
     val_labs = tf.one_hot(mini_batch[1][..., 0], classes)
     if aux:
         losses = [tf.reduce_mean(calc_loss(val_labs, tf.image.resize(train_logit, size=val_labs.shape[

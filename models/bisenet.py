@@ -170,7 +170,7 @@ class BiSeNetv2(K.Model):
         # ========== Aggregation Head ============ #
         self.aggregator = Aggregator()
 
-    def call(self, inputs, training=True, mask=None):
+    def call(self, inputs, training=True, mask=None, aux=True):
         # ========= Detail ============ #
         x1_s1 = self.detail_convblock1(inputs)         # Stride /2
         x1_s2 = self.detail_convblock2(x1_s1)             # Stride /4
@@ -184,7 +184,7 @@ class BiSeNetv2(K.Model):
 
         final_feat = self.aggregator((x1_s3, x2_ce))
         final_feat = self.seg_head(final_feat)
-        if training:
+        if aux:
             out_s2 = self.aux_head1(x2_s2)
             out_s3 = self.aux_head2(x2_s3)
             out_s4 = self.aux_head3(x2_s3)

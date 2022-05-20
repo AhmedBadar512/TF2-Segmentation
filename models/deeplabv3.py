@@ -110,7 +110,7 @@ class Deeplabv3plus(tf.keras.Model):
             inputs=backbone.input,
             outputs=backbone.get_layer(self.outputs_name[self.backbone]["feature_2_layer"]).output)
 
-    def call(self, inputs, training=None, mask=None):
+    def call(self, inputs, training=None, mask=None, aux=False):
         x_aspp = self.backbone_aspp(inputs)
         x_b = self.backbone_b(inputs)
         x_aspp = self.aspp(x_aspp, training)
