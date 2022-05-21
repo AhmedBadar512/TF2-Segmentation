@@ -1,4 +1,6 @@
 from collections import namedtuple
+
+import cv2
 import tensorflow as tf
 
 
@@ -65,7 +67,13 @@ def gpu_cs_labels(segmentation_maps):
     """
     segmentation_map: (b, h, w, 1) or (b, h, w)
     """
-    ncmap = [label[-1] for label in get_cityscapes() if (label[2] != 255 and label[2] != -1)]
+    # ncmap = [label[-1] if (label[2] != 255 and label[2] != -1) else (0, 0, 0) for label in get_cityscapes()]
+    ncmap = []
+    for label in get_cityscapes():
+        if label[2] == 255 or label[2] == -1:
+            continue
+        else:
+            ncmap.append(label[-1])
     color_imgs = tf.gather(params=ncmap, indices=tf.cast(segmentation_maps, dtype=tf.int32))
     return color_imgs
 
@@ -81,6 +89,10 @@ def gpu_random_labels(segmentation_maps, cmp):
 
 
 if __name__ == "__main__":
-    cs_dict = get_cityscapes()
-    ncmap = [label[-1] if (label[2] != 255 and label[2] != -1) else (0, 0, 0) for label in cs_dict]
-    print("a")
+    import glob
+    cv2.namedWindow("demo", 0)
+    lab_list = glob.glob("/volumes2/datasets/Generic/cityscapes/gtFine2/train/aachen/*png")
+    for lab in lab_list:
+        lab = gpu_cs_labels(cv2.imread(lab)[..., 0] + 1)
+        cv2.imshow("demo", lab.numpy().astype('uint8')[..., ::-1])
+        cv2.waitKey()

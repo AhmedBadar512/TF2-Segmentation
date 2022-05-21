@@ -43,7 +43,7 @@ def display(img_list, seg_list, pred_list=None, cs_19=False, save_dir=None, img_
         cv2.waitKey()
 
 
-def get_images_custom(image, label, shp=(256, 512), cs_19=False):
+def get_images_custom(image, label, shp=(256, 512)):
     """
     Get images from segmentation tfrecords
     :param features: the tf.data.Dataset object loaded with tf_datasets
@@ -53,13 +53,6 @@ def get_images_custom(image, label, shp=(256, 512), cs_19=False):
     if shp is not None:
         image = tf.image.resize(image, shp)
         label = tf.image.resize(label, shp, method='nearest')
-    if cs_19:
-        label = tf.cast(label, dtype=tf.int32)
-        label = tf.where(label == 6, 7, label)
-        label = tf.where(label == 9, 8, label)
-        label = tf.where(label == 4, 11, label)
-        label = tf.where(label == 5, 11, label)
-        label = vis.convert_cs_19(label)
     return image, label[..., 0:1]
 
 

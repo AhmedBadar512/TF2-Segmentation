@@ -15,6 +15,8 @@ from model_provider import get_model
 from utils.create_seg_tfrecords import TFRecordsSeg
 from visualization_dicts import gpu_cs_labels, generate_random_colors, gpu_random_labels
 
+EPSILON = 1e-6
+
 args = argparse.ArgumentParser(description="Train a network with specific settings")
 args.add_argument("--backbone", type=str, default="",
                   help="Backbone in case applicable",
@@ -107,14 +109,7 @@ logdir = os.path.join(args.save_dir,
                                                                           time))
 
 # =========== Load Dataset ============ #
-
-if dataset_name == "cityscapes19":
-    cs_19 = True
-    dataset_name = "cityscapes"
-else:
-    cs_19 = False
-if not cs_19:
-    cmap = generate_random_colors(bg_class=args.bg_class)
+cmap = generate_random_colors(bg_class=args.bg_class)
 
 dataset_train = TFRecordsSeg(
     tfrecord_path=
@@ -147,7 +142,7 @@ assert dataset_train is not None, "Training dataset can not be None"
 assert dataset_validation is not None, "Either test or validation dataset should not be None"
 
 eval_dataset = dataset_validation
-get_images_processed = lambda image, label: get_images_custom(image, label, (args.height, args.width), cs_19)
+get_images_processed = lambda image, label: get_images_custom(image, label, (args.height, args.width))
 
 processed_train = dataset_train.map(augmentor)
 processed_train = processed_train.map(get_images_processed)
@@ -197,17 +192,18 @@ calc_loss = losses.get_loss(name=args.loss)
 def train_step(mini_batch, aux=False, pick=None):
     with tf.GradientTape() as tape:
         train_logits = model(tf.image.per_image_standardization(mini_batch[0]), training=True, aux=aux)
-        train_labs = tf.one_hot(mini_batch[1][..., 0], classes)
+        train_labs = tf.one_hot(mini_batch[1][..., 0], classes) + EPSILON
+        loss_mask = tf.reduce_sum(train_labs, axis=-1)
         if aux:
-            losses = [tf.reduce_mean(calc_loss(train_labs, tf.image.resize(train_logit, size=train_labs.shape[
-                                                                                             1:3]))) if n == 0 else args.aux_weight * tf.reduce_mean(
-                calc_loss(
-                    train_labs, tf.image.resize(train_logit, size=train_labs.shape[1:3]))) for n, train_logit in
+            losses = [loss_mask * calc_loss(train_labs, tf.image.resize(train_logit, size=train_labs.shape[
+                                                                                             1:3])) if n == 0 else args.aux_weight *
+                loss_mask * calc_loss(
+                    train_labs, tf.image.resize(train_logit, size=train_labs.shape[1:3])) for n, train_logit in
                       enumerate(train_logits)]
             loss = tf.reduce_sum(losses)
             train_logits = train_logits[0]
         else:
-            loss = calc_loss(train_labs, train_logits)
+            loss = loss_mask * calc_loss(train_labs, train_logits)
         loss = tf.reduce_mean(loss)
     if pick is not None:
         trainable_vars = [var for var in model.trainable_variables if pick in var.name]
@@ -222,17 +218,16 @@ def train_step(mini_batch, aux=False, pick=None):
 def val_step(mini_batch, aux=False):
     val_logits = model(tf.image.per_image_standardization(mini_batch[0]),
                        training=True, aux=aux)
-    val_labs = tf.one_hot(mini_batch[1][..., 0], classes)
+    val_labs = tf.one_hot(mini_batch[1][..., 0], classes) + EPSILON
+    loss_mask = tf.reduce_sum(val_labs, axis=-1)
     if aux:
-        losses = [tf.reduce_mean(calc_loss(val_labs, tf.image.resize(train_logit, size=val_labs.shape[
-                                                                                       1:3]))) if n == 0 else args.aux_weight * tf.reduce_mean(
-            calc_loss(
-                val_labs, tf.image.resize(train_logit, size=val_labs.shape[1:3]))) for n, train_logit in
-                  enumerate(val_logits)]
+        losses = [loss_mask * calc_loss(val_labs, tf.image.resize(train_logit, size=val_labs.shape[1:3])) if n == 0
+                  else args.aux_weight * loss_mask * calc_loss(val_labs, tf.image.resize(train_logit, size=val_labs.shape[1:3]))
+                  for n, train_logit in enumerate(val_logits)]
         val_loss = tf.reduce_sum(losses)
         val_logits = val_logits[0]
     else:
-        val_loss = calc_loss(val_labs, val_logits)
+        val_loss = loss_mask * calc_loss(val_labs, val_logits)
     val_loss = tf.reduce_mean(val_loss)
     return val_loss, val_labs, tf.image.resize(val_logits, tf.shape(val_labs)[1:3],
                                                method=tf.image.ResizeMethod.BILINEAR)
@@ -291,7 +286,7 @@ def write_summary_images(batch, logits):
     else:
         tf.summary.image("images", batch[0] / 255, step=c_step)
         processed_labs = batch[1]
-    if cs_19:
+    if dataset_name == "cityscapes19":
         colorize = lambda img: tf.cast(tf.squeeze(gpu_cs_labels(img)), dtype=tf.uint8)
         tf.summary.image("pred", colorize(tf.argmax(logits, axis=-1)), step=c_step)
         tf.summary.image("gt", colorize(processed_labs[..., tf.newaxis]), step=c_step)
