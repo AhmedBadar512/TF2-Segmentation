@@ -28,7 +28,7 @@ args.add_argument("-c", "--classes", type=int, default=19, help="Number of class
 args.add_argument("-opt", "--optimizer", type=str, default="Adam", help="Select optimizer",
                   choices=["SGD", "RMSProp", "Adam"])
 args.add_argument("-lrs", "--lr_scheduler", type=str, default="exp_decay", help="Select learning rate scheduler",
-                  choices=["poly", "exp_decay"])
+                  choices=["poly", "exp_decay", "cos_decay_r", "constant"])
 args.add_argument("-e", "--epochs", type=int, default=100, help="Number of epochs to train")
 args.add_argument("--lr", type=float, default=1e-3, help="Initial learning rate")
 args.add_argument("--momentum", type=float, default=0.9, help="Momentum")
@@ -165,6 +165,8 @@ with mirrored_strategy.scope():
         lr_scheduler = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=lr,
                                                                       decay_steps=epochs * total_samples // batch_size,
                                                                       decay_rate=0.9)
+    elif args.lr_scheduler == "cos_decay_r":
+        lr_scheduler = tf.keras.optimizers.schedules.CosineDecayRestarts(lr, 5 * total_samples // batch_size, 2.0, 0.98, 0.01)
     else:
         lr_scheduler = lr
 
@@ -200,7 +202,7 @@ def train_step(mini_batch, aux=False, pick=None):
                 loss_mask * calc_loss(
                     train_labs, tf.image.resize(train_logit, size=train_labs.shape[1:3])) for n, train_logit in
                       enumerate(train_logits)]
-            loss = tf.reduce_sum(losses)
+            loss = sum(losses)
             train_logits = train_logits[0]
         else:
             loss = loss_mask * calc_loss(train_labs, train_logits)
@@ -224,7 +226,7 @@ def val_step(mini_batch, aux=False):
         losses = [loss_mask * calc_loss(val_labs, tf.image.resize(train_logit, size=val_labs.shape[1:3])) if n == 0
                   else args.aux_weight * loss_mask * calc_loss(val_labs, tf.image.resize(train_logit, size=val_labs.shape[1:3]))
                   for n, train_logit in enumerate(val_logits)]
-        val_loss = tf.reduce_sum(losses)
+        val_loss = sum(losses)
         val_logits = val_logits[0]
     else:
         val_loss = loss_mask * calc_loss(val_labs, val_logits)
