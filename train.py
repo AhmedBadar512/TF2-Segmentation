@@ -147,8 +147,8 @@ get_images_processed = lambda image, label: get_images_custom(image, label, (arg
 processed_train = dataset_train.map(augmentor)
 processed_train = processed_train.map(get_images_processed)
 processed_val = dataset_validation.map(get_images_processed)
-processed_train = processed_train.shuffle(args.shuffle_buffer).batch(batch_size, drop_remainder=True).repeat(
-    EPOCHS).prefetch(
+processed_train = processed_train.batch(batch_size, drop_remainder=True).repeat(
+    EPOCHS).shuffle(args.shuffle_buffer).prefetch(
     tf.data.experimental.AUTOTUNE)
 processed_val = processed_val.batch(batch_size, drop_remainder=True) \
     if (dataset_validation is not None) else None
@@ -166,7 +166,7 @@ with mirrored_strategy.scope():
                                                                       decay_steps=epochs * total_samples // batch_size,
                                                                       decay_rate=0.9)
     elif args.lr_scheduler == "cos_decay_r":
-        lr_scheduler = tf.keras.optimizers.schedules.CosineDecayRestarts(lr, 5 * total_samples // batch_size, 2.0, 0.98, 0.01)
+        lr_scheduler = tf.keras.optimizers.schedules.CosineDecayRestarts(lr, (1.1 * total_samples) // batch_size, 2.0, 0.98, 0.01)
     else:
         lr_scheduler = lr
 
