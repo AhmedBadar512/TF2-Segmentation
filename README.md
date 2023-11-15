@@ -10,6 +10,7 @@ Once written you can visualize these using the visualize flag,
 ```
 python utils/create_seg_tfrecords.py --dst_path datasets/tf_records/ --dataset_name cityscapes --img_dir datasets/cityscapes/leftImg8bit/train --label_dir datasets/Generic/cityscapes/gtFine/train --img_pattern .png --label_pattern labelIds.png --split train --visualize
 ```
+**Note:** Your labels should be grayscale where pixel value represents the class values.
 ## Training Models
 Once the TFrecords are written you can read them for training. You can run the following command to train the model. Information on each argument is provided in the description inside the code. Example run,
 
