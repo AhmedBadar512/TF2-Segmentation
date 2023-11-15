@@ -5,7 +5,7 @@ import os
 import string
 
 import tensorflow as tf
-import tensorflow.keras as K
+# import tensorflow.keras as K
 import tqdm
 
 import losses
@@ -171,11 +171,11 @@ with mirrored_strategy.scope():
         lr_scheduler = lr
 
     if optimizer_name == "Adam":
-        optimizer = K.optimizers.Adam(learning_rate=lr_scheduler)
+        optimizer = tf.keras.optimizers.Adam(learning_rate=lr_scheduler)
     elif optimizer_name == "RMSProp":
-        optimizer = K.optimizers.RMSprop(learning_rate=lr_scheduler, momentum=momentum)
+        optimizer = tf.keras.optimizers.RMSprop(learning_rate=lr_scheduler, momentum=momentum)
     else:
-        optimizer = K.optimizers.SGD(learning_rate=lr_scheduler, momentum=momentum)
+        optimizer = tf.keras.optimizers.SGD(learning_rate=lr_scheduler, momentum=momentum)
     model = get_model(model_name, classes=classes, in_size=(args.height, args.width), aux=aux,
                       backbone=args.backbone)
     model(tf.random.uniform((1, args.height, args.width, 3), dtype=tf.float32), True)
@@ -271,7 +271,7 @@ def distributed_val_step(dist_inputs):
 train_writer = tf.summary.create_file_writer(os.path.join(logdir, "train"))
 val_writer = tf.summary.create_file_writer(os.path.join(logdir, "val"))
 
-mIoU = K.metrics.MeanIoU(classes)
+mIoU = tf.keras.metrics.MeanIoU(classes)
 
 if args.load_model is not None:
     START_EPOCH = int(args.load_model.split("/")[-1])
