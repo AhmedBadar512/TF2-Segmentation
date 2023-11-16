@@ -95,7 +95,7 @@ class Deeplabv3plus(keras.Model):
             "xception": {"aspp_layer": "block13_sepconv2_bn", "feature_2_layer": "block3_sepconv2_bn"},
             "mobilenetv3large": {"aspp_layer": "expanded_conv_3/expand/BatchNorm",
                                  "feature_2_layer": "expanded_conv_12/expand/BatchNorm"},
-            "mobilenetv3small": {"aspp_layer": "re_lu_42", "feature_2_layer": "multiply_31"},
+            "mobilenetv3small": {"aspp_layer": "re_lu_3", "feature_2_layer": "multiply_11"},
         }
 
     def build(self, input_shape):
@@ -127,7 +127,7 @@ class Deeplabv3plus(keras.Model):
 
 
 if __name__ == "__main__":
-    deeplab_model = Deeplabv3plus()
     i = tf.random.uniform((1, 512, 512, 3))
+    deeplab_model = Deeplabv3plus()
     a = deeplab_model(i)
     print(a.shape)
