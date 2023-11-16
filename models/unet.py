@@ -1,6 +1,6 @@
 import tensorflow as tf
-import tensorflow.keras as K
-import tensorflow_probability as tfp
+import keras as K
+# import tensorflow_probability as tfp
 
 
 class UNet(K.Model):

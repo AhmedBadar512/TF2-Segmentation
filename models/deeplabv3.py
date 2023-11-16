@@ -1,10 +1,11 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D
+import keras
+from keras.layers import Conv2D
 from models.backbones import get_backbone
 from models.layers import ConvBlock
 
 
-class AtrousSpatialPyramidPooling(tf.keras.layers.Layer):
+class AtrousSpatialPyramidPooling(keras.layers.Layer):
     """Atrous Spatial Pyramid Pooling layer for DeepLabV3+ architecture."""
 
     # !pylint:disable=too-many-instance-attributes
@@ -16,7 +17,7 @@ class AtrousSpatialPyramidPooling(tf.keras.layers.Layer):
         self.conv1, self.conv2 = None, None
         self.pool = None
         self.out1, self.out6, self.out12, self.out18 = None, None, None, None
-        self.concat = tf.keras.layers.Concatenate(axis=-1)
+        self.concat = keras.layers.Concatenate(axis=-1)
 
     @staticmethod
     def _get_conv_block(kernel_size, dilation_rate, use_bias=False):
@@ -25,14 +26,14 @@ class AtrousSpatialPyramidPooling(tf.keras.layers.Layer):
                          dilation_rate=dilation_rate,
                          padding='same',
                          use_bias=use_bias,
-                         kernel_initializer=tf.keras.initializers.he_normal(),
+                         kernel_initializer=keras.initializers.he_normal(),
                          activation='relu')
 
     def build(self, input_shape):
         dummy_tensor = tf.random.normal(input_shape)  # used for calculating
         # output shape of convolutional layers
 
-        self.avg_pool = tf.keras.layers.AveragePooling2D(
+        self.avg_pool = keras.layers.AveragePooling2D(
             pool_size=(input_shape[-3], input_shape[-2]))
 
         self.conv1 = AtrousSpatialPyramidPooling._get_conv_block(
@@ -43,7 +44,7 @@ class AtrousSpatialPyramidPooling(tf.keras.layers.Layer):
 
         dummy_tensor = self.conv1(self.avg_pool(dummy_tensor))
 
-        self.pool = tf.keras.layers.UpSampling2D(
+        self.pool = keras.layers.UpSampling2D(
             size=(
                 input_shape[-3] // dummy_tensor.shape[1],
                 input_shape[-2] // dummy_tensor.shape[2]
@@ -76,10 +77,10 @@ class AtrousSpatialPyramidPooling(tf.keras.layers.Layer):
         return tensor
 
 
-class Deeplabv3plus(tf.keras.Model):
+class Deeplabv3plus(keras.Model):
     def __init__(self, backbone="resnet50", classes=19, activation='relu', **kwargs):
         super().__init__()
-        self.backbone = backbone
+        self.backbone_name = backbone
         self.aspp = AtrousSpatialPyramidPooling()
         self.convblock1 = ConvBlock(48, 1, padding="same", use_bias=False, activation=activation)
         self.convblock2 = ConvBlock(256, 3, padding="same", use_bias=False, activation=activation)
@@ -92,23 +93,25 @@ class Deeplabv3plus(tf.keras.Model):
             "resnet101v2": {"aspp_layer": "conv4_block23_out", "feature_2_layer": "conv2_block3_out"},
             "resnet152": {"aspp_layer": "conv4_block36_out", "feature_2_layer": "conv2_block3_out"},
             "xception": {"aspp_layer": "block13_sepconv2_bn", "feature_2_layer": "block3_sepconv2_bn"},
+            "mobilenetv3large": {"aspp_layer": "expanded_conv_3/expand/BatchNorm",
+                                 "feature_2_layer": "expanded_conv_12/expand/BatchNorm"},
+            "mobilenetv3small": {"aspp_layer": "re_lu_42", "feature_2_layer": "multiply_31"},
         }
 
     def build(self, input_shape):
-        self.get_aspp_feature_backbone(input_shape)     # Spatial factor reduction of 32 e.g. 512 -> 16
-        self.get_feature_2_backbone(input_shape)        # Spatial factor reduction of 8 e.g. 512 -> 64
+        self.backbone = get_backbone(self.backbone_name, input_shape=input_shape[1:])
+        self.get_aspp_feature_backbone()     # Spatial factor reduction of 4 e.g. 512 -> 128
+        self.get_feature_2_backbone()        # Spatial factor reduction of 16 e.g. 512 -> 32
 
-    def get_aspp_feature_backbone(self, input_shape):
-        backbone = get_backbone(self.backbone, input_shape=input_shape[1:])
-        self.backbone_aspp = tf.keras.Model \
-            (inputs=backbone.input,
-             outputs=backbone.get_layer(self.outputs_name[self.backbone]["aspp_layer"]).output)
+    def get_aspp_feature_backbone(self):
+        self.backbone_aspp = keras.Model \
+            (inputs=self.backbone.input,
+             outputs=self.backbone.get_layer(self.outputs_name[self.backbone_name]["aspp_layer"]).output)
 
-    def get_feature_2_backbone(self, input_shape):
-        backbone = get_backbone(self.backbone, input_shape=input_shape[1:])
-        self.backbone_b = tf.keras.Model(
-            inputs=backbone.input,
-            outputs=backbone.get_layer(self.outputs_name[self.backbone]["feature_2_layer"]).output)
+    def get_feature_2_backbone(self):
+        self.backbone_b = keras.Model(
+            inputs=self.backbone.input,
+            outputs=self.backbone.get_layer(self.outputs_name[self.backbone_name]["feature_2_layer"]).output)
 
     def call(self, inputs, training=None, mask=None, aux=False):
         x_aspp = self.backbone_aspp(inputs)
@@ -116,7 +119,7 @@ class Deeplabv3plus(tf.keras.Model):
         x_aspp = self.aspp(x_aspp, training)
         x_a = tf.image.resize(x_aspp, tf.shape(x_b)[1:3])
         x_b = self.convblock1(x_b, training)
-        x_ab = tf.keras.layers.concatenate([x_a, x_b])
+        x_ab = keras.layers.concatenate([x_a, x_b])
         x_ab = self.convblock2(x_ab, training)
         x_ab = self.convblock3(x_ab, training)
         x_ab = tf.image.resize(x_ab, tf.shape(inputs)[1:3])
@@ -125,5 +128,6 @@ class Deeplabv3plus(tf.keras.Model):
 
 if __name__ == "__main__":
     deeplab_model = Deeplabv3plus()
-    a = deeplab_model(tf.random.uniform((1, 368, 640, 3)))
+    i = tf.random.uniform((1, 512, 512, 3))
+    a = deeplab_model(i)
     print(a.shape)

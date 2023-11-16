@@ -1,5 +1,5 @@
 import tensorflow as tf
-import tensorflow.keras as K
+import keras as K
 
 
 class Upscaler(K.layers.Layer):

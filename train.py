@@ -5,7 +5,7 @@ import os
 import string
 
 import tensorflow as tf
-# import tensorflow.keras as K
+import keras
 import tqdm
 
 import losses
@@ -20,10 +20,13 @@ EPSILON = 1e-6
 args = argparse.ArgumentParser(description="Train a network with specific settings")
 args.add_argument("--backbone", type=str, default="",
                   help="Backbone in case applicable",
-                  choices=["resnet50", "resnet101", "resnet152", "xception", "resnet101v2", "resnet50v2"])
+                  choices=["resnet50", "resnet101", "resnet152", "xception", "resnet101v2",
+                           "resnet50v2",
+                           "mobilenetv3large",
+                           "mobilenetv3small"])
 args.add_argument("-d", "--dataset", type=str, default="cityscapes19",
                   help="Name a dataset from the tf_dataset collection",
-                  choices=["cityscapes", "cityscapes19", "ade20k", "fangzhou"])
+                  choices=["cityscapes", "cityscapes19", "ade20k", "fangzhou", "bdd_drivable"])
 args.add_argument("-c", "--classes", type=int, default=19, help="Number of classes")
 args.add_argument("-opt", "--optimizer", type=str, default="Adam", help="Select optimizer",
                   choices=["SGD", "RMSProp", "Adam"])
@@ -72,7 +75,7 @@ args.add_argument("--all_augs", action="store_true", default=False, help="Add al
 args = args.parse_args()
 
 if args.fp16:
-    tf.keras.mixed_precision.set_global_policy('mixed_float16')
+    keras.mixed_precision.set_global_policy('mixed_float16')
 
 physical_devices = tf.config.experimental.list_physical_devices("GPU")
 for gpu in physical_devices:
@@ -157,25 +160,25 @@ processed_val = mirrored_strategy.experimental_distribute_dataset(processed_val)
 # =========== Optimizer and Training Setup ============ #
 with mirrored_strategy.scope():
     if args.lr_scheduler == "poly":
-        lr_scheduler = tf.keras.optimizers.schedules.PolynomialDecay(initial_learning_rate=lr,
+        lr_scheduler = keras.optimizers.schedules.PolynomialDecay(initial_learning_rate=lr,
                                                                      decay_steps=epochs * total_samples // batch_size,
                                                                      end_learning_rate=1e-12,
                                                                      power=0.9)
     elif args.lr_scheduler == "exp_decay":
-        lr_scheduler = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=lr,
+        lr_scheduler = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=lr,
                                                                       decay_steps=epochs * total_samples // batch_size,
                                                                       decay_rate=0.9)
     elif args.lr_scheduler == "cos_decay_r":
-        lr_scheduler = tf.keras.optimizers.schedules.CosineDecayRestarts(lr, (1.1 * total_samples) // batch_size, 2.0, 0.98, 0.01)
+        lr_scheduler = keras.optimizers.schedules.CosineDecayRestarts(lr, (1.1 * total_samples) // batch_size, 2.0, 0.98, 0.01)
     else:
         lr_scheduler = lr
 
     if optimizer_name == "Adam":
-        optimizer = tf.keras.optimizers.Adam(learning_rate=lr_scheduler)
+        optimizer = keras.optimizers.Adam(learning_rate=lr_scheduler)
     elif optimizer_name == "RMSProp":
-        optimizer = tf.keras.optimizers.RMSprop(learning_rate=lr_scheduler, momentum=momentum)
+        optimizer = keras.optimizers.RMSprop(learning_rate=lr_scheduler, momentum=momentum)
     else:
-        optimizer = tf.keras.optimizers.SGD(learning_rate=lr_scheduler, momentum=momentum)
+        optimizer = keras.optimizers.SGD(learning_rate=lr_scheduler, momentum=momentum)
     model = get_model(model_name, classes=classes, in_size=(args.height, args.width), aux=aux,
                       backbone=args.backbone)
     model(tf.random.uniform((1, args.height, args.width, 3), dtype=tf.float32), True)
@@ -271,7 +274,7 @@ def distributed_val_step(dist_inputs):
 train_writer = tf.summary.create_file_writer(os.path.join(logdir, "train"))
 val_writer = tf.summary.create_file_writer(os.path.join(logdir, "val"))
 
-mIoU = tf.keras.metrics.MeanIoU(classes)
+mIoU = keras.metrics.MeanIoU(classes)
 
 if args.load_model is not None:
     START_EPOCH = int(args.load_model.split("/")[-1])

@@ -1,7 +1,8 @@
-import tensorflow.keras as K
+import keras
+K = keras
 import tensorflow_addons as tfa
 import tensorflow as tf
-from tensorflow.keras.applications.vgg19 import preprocess_input
+from keras.applications.vgg19 import preprocess_input
 
 
 def get_loss(name='cross_entropy'):
@@ -130,8 +131,8 @@ class PatchNCELoss:
         # Potential: only supports for batch_size=1 now.
         self.nce_temp = nce_temp
         self.nce_lambda = nce_lambda
-        self.cross_entropy_loss = tf.keras.losses.CategoricalCrossentropy(
-                                        reduction=tf.keras.losses.Reduction.NONE,
+        self.cross_entropy_loss = keras.losses.CategoricalCrossentropy(
+                                        reduction=keras.losses.Reduction.NONE,
                                         from_logits=True)
 
     def __call__(self, source, target, netE, netF):
@@ -155,7 +156,7 @@ class PatchNCELoss:
         return total_nce_loss / len(feat_source_pool)
 
 
-class VGGLoss(tf.keras.Model):
+class VGGLoss(keras.Model):
     def __init__(self):
         super(VGGLoss, self).__init__(name='VGGLoss')
         self.vgg = Vgg19()
@@ -180,21 +181,21 @@ class VGGLoss(tf.keras.Model):
         return loss
 
 
-class Vgg19(tf.keras.Model):
+class Vgg19(keras.Model):
     def __init__(self, trainable=False):
         super(Vgg19, self).__init__(name='Vgg19')
-        vgg_pretrained_features = tf.keras.applications.vgg19.VGG19(weights='imagenet', include_top=False)
+        vgg_pretrained_features = keras.applications.vgg19.VGG19(weights='imagenet', include_top=False)
 
         if trainable is False:
             vgg_pretrained_features.trainable = False
 
         vgg_pretrained_features = vgg_pretrained_features.layers
 
-        self.slice1 = tf.keras.Sequential()
-        self.slice2 = tf.keras.Sequential()
-        self.slice3 = tf.keras.Sequential()
-        self.slice4 = tf.keras.Sequential()
-        self.slice5 = tf.keras.Sequential()
+        self.slice1 = keras.Sequential()
+        self.slice2 = keras.Sequential()
+        self.slice3 = keras.Sequential()
+        self.slice4 = keras.Sequential()
+        self.slice5 = keras.Sequential()
 
         for x in range(1, 2):
             self.slice1.add(vgg_pretrained_features[x])

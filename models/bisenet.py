@@ -1,6 +1,6 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D
-import tensorflow.keras as K
+from keras.layers import Conv2D
+import keras as K
 from models.layers import ConvBlock, StemBlock, DWConvBlock
 
 
@@ -198,7 +198,7 @@ if __name__ == "__main__":
     physical_devices = tf.config.experimental.list_physical_devices("GPU")
     for gpu in physical_devices:
         tf.config.experimental.set_memory_growth(gpu, True)
-    tf.keras.mixed_precision.set_global_policy('mixed_float16')
+    keras.mixed_precision.set_global_policy('mixed_float16')
     bs = 14
     x = tf.random.normal((bs, 1024, 2048, 3))
     bisenet = BiSeNetv2(classes=19)

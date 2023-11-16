@@ -1,5 +1,6 @@
 import tensorflow as tf
-import tensorflow.keras as K
+import keras
+K = keras
 import tensorflow_addons as tfa
 
 
@@ -173,7 +174,7 @@ class ResBlock(K.layers.Layer):
 
 class SPADE(K.layers.Layer):
     def __init__(self, channels, sn=False, activation=None, ks=5, is_oasis=False,
-                 init=tf.keras.initializers.glorot_uniform()):
+                 init=keras.initializers.glorot_uniform()):
         super().__init__()
         self.conv1 = K.layers.Conv2D(128, ks, 1, padding="SAME", activation="relu", kernel_initializer=init)
         self.conv_gamma = K.layers.Conv2D(channels, ks, 1, padding="SAME", kernel_initializer=init)
@@ -211,7 +212,7 @@ class SPADE(K.layers.Layer):
 
 
 class SPADEResBlock(K.Model):
-    def __init__(self, channels, sn=True, ks=5, is_oasis=False, init=tf.keras.initializers.glorot_uniform()):
+    def __init__(self, channels, sn=True, ks=5, is_oasis=False, init=keras.initializers.glorot_uniform()):
         super().__init__()
         self.channels = channels
         self.sn = sn
@@ -256,7 +257,7 @@ class SPADEResBlock(K.Model):
 
 
 class ResBlock_D(K.Model):
-    def __init__(self, channels, first=False, up_down="up", init=tf.keras.initializers.glorot_uniform()):
+    def __init__(self, channels, first=False, up_down="up", init=keras.initializers.glorot_uniform()):
         super().__init__()
         self.channels = channels
         self.up_down = up_down
