@@ -22,14 +22,18 @@ def get_backbone(name="resnet50", **kwargs):
         raise ModuleNotFoundError(f'Model "{name}" not yet implemented')
 
 
-def get_bb_dict(backbone):
+def get_bb_dict(backbone, divisible_factor=1):
     """
     Returns a dict with keys as tuples representing (h, w) from (None, h, w, c) shape
     """
     final_dict = {}
     for n, bb_layer in enumerate(backbone.layers):
-        if bb_layer.output.shape[1:3] not in final_dict.keys():
-            final_dict[bb_layer.output.shape[1:3]] = [n]
+        if divisible_factor < bb_layer.output.shape[1] and divisible_factor < bb_layer.output.shape[2]:
+            layer_shape = tuple(map(lambda x: round(x / divisible_factor) * divisible_factor, bb_layer.output.shape[1:3]))
         else:
-            final_dict[bb_layer.output.shape[1:3]].append(n)
+            layer_shape = bb_layer.output.shape[1:3]
+        if layer_shape not in final_dict.keys():
+            final_dict[layer_shape] = [n]
+        else:
+            final_dict[layer_shape].append(n)
     return final_dict

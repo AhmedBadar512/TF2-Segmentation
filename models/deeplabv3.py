@@ -89,7 +89,7 @@ class Deeplabv3plus(keras.Model):
 
     def build(self, input_shape):
         self.backbone = get_backbone(self.backbone_name, input_shape=input_shape[1:])
-        ind_dict = get_bb_dict(self.backbone)
+        ind_dict = get_bb_dict(self.backbone, divisible_factor=32)
         aspp_shape, backbone_b_shape = (input_shape[1]//4, input_shape[2]//4), (input_shape[1]//16, input_shape[2]//16)
         aspp_index, backbone_b_index = ind_dict[aspp_shape][-1], ind_dict[backbone_b_shape][-1]
         self.backbone_aspp = keras.Model(inputs=self.backbone.input, outputs=self.backbone.layers[aspp_index].output)
