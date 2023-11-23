@@ -1,7 +1,7 @@
 import tensorflow as tf
 import keras
 from keras.layers import Conv2D
-from models.backbones import get_backbone
+from models.backbones import get_backbone, get_bb_dict
 from models.layers import ConvBlock
 
 
@@ -86,32 +86,14 @@ class Deeplabv3plus(keras.Model):
         self.convblock2 = ConvBlock(256, 3, padding="same", use_bias=False, activation=activation)
         self.convblock3 = ConvBlock(256, 3, padding="same", use_bias=False, activation=activation)
         self.conv_f = Conv2D(classes, (1, 1), name='output_layer')
-        self.outputs_name = {
-            "resnet50": {"aspp_layer": "conv4_block6_out", "feature_2_layer": "conv2_block3_out"},
-            "resnet50v2": {"aspp_layer": "conv4_block6_out", "feature_2_layer": "conv2_block3_out"},
-            "resnet101": {"aspp_layer": "conv4_block23_out", "feature_2_layer": "conv2_block3_out"},
-            "resnet101v2": {"aspp_layer": "conv4_block23_out", "feature_2_layer": "conv2_block3_out"},
-            "resnet152": {"aspp_layer": "conv4_block36_out", "feature_2_layer": "conv2_block3_out"},
-            "xception": {"aspp_layer": "block13_sepconv2_bn", "feature_2_layer": "block3_sepconv2_bn"},
-            "mobilenetv3large": {"aspp_layer": "expanded_conv_3/expand/BatchNorm",
-                                 "feature_2_layer": "expanded_conv_12/expand/BatchNorm"},
-            "mobilenetv3small": {"aspp_layer": "re_lu_3", "feature_2_layer": "multiply_11"},
-        }
 
     def build(self, input_shape):
         self.backbone = get_backbone(self.backbone_name, input_shape=input_shape[1:])
-        self.get_aspp_feature_backbone()     # Spatial factor reduction of 4 e.g. 512 -> 128
-        self.get_feature_2_backbone()        # Spatial factor reduction of 16 e.g. 512 -> 32
-
-    def get_aspp_feature_backbone(self):
-        self.backbone_aspp = keras.Model \
-            (inputs=self.backbone.input,
-             outputs=self.backbone.get_layer(self.outputs_name[self.backbone_name]["aspp_layer"]).output)
-
-    def get_feature_2_backbone(self):
-        self.backbone_b = keras.Model(
-            inputs=self.backbone.input,
-            outputs=self.backbone.get_layer(self.outputs_name[self.backbone_name]["feature_2_layer"]).output)
+        ind_dict = get_bb_dict(self.backbone)
+        aspp_shape, backbone_b_shape = (input_shape[1]//4, input_shape[2]//4), (input_shape[1]//16, input_shape[2]//16)
+        aspp_index, backbone_b_index = ind_dict[aspp_shape][-1], ind_dict[backbone_b_shape][-1]
+        self.backbone_aspp = keras.Model(inputs=self.backbone.input, outputs=self.backbone.layers[aspp_index].output)
+        self.backbone_b = keras.Model(inputs=self.backbone.input, outputs=self.backbone.layers[backbone_b_index].output)
 
     def call(self, inputs, training=None, mask=None, aux=False):
         x_aspp = self.backbone_aspp(inputs)

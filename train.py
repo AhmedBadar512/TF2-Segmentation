@@ -17,6 +17,11 @@ from visualization_dicts import gpu_cs_labels, generate_random_colors, gpu_rando
 
 EPSILON = 1e-6
 
+
+def list_of_ints(arg):
+    return tuple(map(int, arg.split(',')))
+
+
 args = argparse.ArgumentParser(description="Train a network with specific settings")
 args.add_argument("--backbone", type=str, default="",
                   help="Backbone in case applicable",
@@ -66,6 +71,8 @@ args.add_argument("--random_crop_min", type=float, default=None,
                   help="minimum value for crop height/width relative to original image")
 args.add_argument("--random_crop_max", type=float, default=None,
                   help="Width of random crop as ratio of original width, random_crop_height must be given with this")
+args.add_argument("--random_crop", type=list_of_ints, default=None,
+                  help="Pass a tuple as h,w for size of random crop e.g. 512,512 to crop shape (512, 512)")
 args.add_argument("--random_hue", action="store_true", default=False, help="Randomly change hue")
 args.add_argument("--random_saturation", action="store_true", default=False, help="Randomly change saturation")
 args.add_argument("--random_brightness", action="store_true", default=False, help="Randomly change brightness")
@@ -83,9 +90,10 @@ for gpu in physical_devices:
 mirrored_strategy = tf.distribute.MirroredStrategy()
 
 tf.random.set_seed(args.random_seed)
-random_crop_size = (args.random_crop_min, args.random_crop_max) \
-    if args.random_crop_max is not None and args.random_crop_min is not None \
-    else None
+# random_crop_size = (args.random_crop_min, args.random_crop_max) \
+#     if args.random_crop_max is not None and args.random_crop_min is not None \
+#     else None
+random_crop_size = args.random_crop
 backbone = args.backbone
 dataset_name = args.dataset
 aux = args.aux
@@ -122,7 +130,7 @@ dataset_validation = TFRecordsSeg(
     "{}/{}_val.tfrecords".format(args.tf_record_path, dataset_name)).read_tfrecords()
 if args.all_augs:
     args.flip_left_right = True
-    random_crop_size = (0.5, 0.95)
+    random_crop_size = (512, 512)
     args.random_hue = True
     args.random_saturation = True
     args.random_brightness = True

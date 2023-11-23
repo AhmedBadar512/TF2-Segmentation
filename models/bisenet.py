@@ -198,7 +198,7 @@ if __name__ == "__main__":
     physical_devices = tf.config.experimental.list_physical_devices("GPU")
     for gpu in physical_devices:
         tf.config.experimental.set_memory_growth(gpu, True)
-    keras.mixed_precision.set_global_policy('mixed_float16')
+    K.mixed_precision.set_global_policy('mixed_float16')
     bs = 14
     x = tf.random.normal((bs, 1024, 2048, 3))
     bisenet = BiSeNetv2(classes=19)
@@ -206,11 +206,3 @@ if __name__ == "__main__":
     optimizer = K.optimizers.SGD()
     final, z1, z2, z3 = bisenet(x, True)
     bisenet.summary()
-    # for _ in tqdm.tqdm(range(1000)):
-    #     final, z1, z2, z3 = bisenet(x, True)
-        # with tf.GradientTape() as tape:
-        #     final, z1, z2, z3 = bisenet(x, True)
-        #     # final = bisenet(x, False)
-        #     loss = 100 * tf.reduce_mean(tf.cast(final, tf.float32) - tf.random.normal((bs, 512, 1024, 19)))
-        # vars = bisenet.trainable_variables
-        # optimizer.apply_gradients(zip(tape.gradient(loss, vars), vars))
