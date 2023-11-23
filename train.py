@@ -57,7 +57,7 @@ args.add_argument("-s", "--save_dir", type=str, default="./runs", help="Save dir
 args.add_argument("-tfrecs", "--tf_record_path", type=str, default="/data/input-ai/datasets/tf2_segmentation_tfrecords",
                   help="Save directory that contains train and validation tfrecords")
 args.add_argument("-sb", "--shuffle_buffer", type=int, default=128, help="Size of the shuffle buffer")
-args.add_argument("--width", type=int, default=1024, help="Size of the shuffle buffer")
+args.add_argument("--width", type=int, default=512, help="Size of the shuffle buffer")
 args.add_argument("--height", type=int, default=512, help="Size of the shuffle buffer")
 args.add_argument("--aux", action="store_true", default=False, help="Auxiliary losses included if true")
 args.add_argument("--aux_weight", type=float, default=0.2, help="Auxiliary losses included if true")
