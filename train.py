@@ -67,10 +67,6 @@ args.add_argument("--fp16", action="store_true", default=False, help="Give to en
 # ============ Augmentation Arguments ===================== #
 args.add_argument("--flip_up_down", action="store_true", default=False, help="Randomly flip images up and down")
 args.add_argument("--flip_left_right", action="store_true", default=False, help="Randomly flip images right left")
-args.add_argument("--random_crop_min", type=float, default=None,
-                  help="minimum value for crop height/width relative to original image")
-args.add_argument("--random_crop_max", type=float, default=None,
-                  help="Width of random crop as ratio of original width, random_crop_height must be given with this")
 args.add_argument("--random_crop", type=list_of_ints, default=None,
                   help="Pass a tuple as h,w for size of random crop e.g. 512,512 to crop shape (512, 512)")
 args.add_argument("--random_hue", action="store_true", default=False, help="Randomly change hue")
@@ -90,9 +86,6 @@ for gpu in physical_devices:
 mirrored_strategy = tf.distribute.MirroredStrategy()
 
 tf.random.set_seed(args.random_seed)
-# random_crop_size = (args.random_crop_min, args.random_crop_max) \
-#     if args.random_crop_max is not None and args.random_crop_min is not None \
-#     else None
 random_crop_size = args.random_crop
 backbone = args.backbone
 dataset_name = args.dataset
@@ -128,6 +121,7 @@ dataset_train = TFRecordsSeg(
 dataset_validation = TFRecordsSeg(
     tfrecord_path=
     "{}/{}_val.tfrecords".format(args.tf_record_path, dataset_name)).read_tfrecords()
+
 if args.all_augs:
     args.flip_left_right = True
     random_crop_size = (512, 512)
@@ -161,7 +155,7 @@ processed_val = dataset_validation.map(get_images_processed)
 processed_train = processed_train.batch(batch_size, drop_remainder=True).repeat(
     EPOCHS).shuffle(args.shuffle_buffer).prefetch(
     tf.data.experimental.AUTOTUNE)
-processed_val = processed_val.batch(batch_size, drop_remainder=True) \
+processed_val = processed_val.batch(batch_size, drop_remainder=True).prefetch(tf.data.experimental.AUTOTUNE) \
     if (dataset_validation is not None) else None
 processed_train = mirrored_strategy.experimental_distribute_dataset(processed_train)
 processed_val = mirrored_strategy.experimental_distribute_dataset(processed_val)
@@ -253,8 +247,8 @@ def distributed_train_step(dist_inputs):
                                     axis=None)
     if len(physical_devices) > 1:
         return loss, \
-               tf.concat(train_labs.values, axis=0), \
-               tf.concat(train_logits.values, axis=0)
+               train_labs.values[0], \
+               train_logits.values[0]
     else:
         return loss, \
                train_labs, \
@@ -268,8 +262,8 @@ def distributed_val_step(dist_inputs):
                                     axis=None)
     if len(physical_devices) > 1:
         return loss, \
-               tf.concat(val_labs.values, axis=0), \
-               tf.concat(val_logits.values, axis=0)
+               val_labs.values[0], \
+               val_logits.values[0]
     else:
         return loss, \
                val_labs, \
@@ -292,10 +286,8 @@ else:
 
 def write_summary_images(batch, logits):
     if len(physical_devices) > 1:
-        tf.summary.image("images", tf.concat(batch[0].values, axis=0) / 255, step=c_step)
-        processed_labs = tf.concat(batch[1].values, axis=0)
-        # tf.summary.image("images", batch[0].values[0] / 255, step=c_step)
-        # processed_labs = tf.concat(batch[1].values[0], axis=0)
+        tf.summary.image("images", batch[0].values[0] / 255, step=c_step)
+        processed_labs = batch[1].values[0]
     else:
         tf.summary.image("images", batch[0] / 255, step=c_step)
         processed_labs = batch[1]
@@ -377,11 +369,6 @@ while epoch < EPOCHS:
         loss, train_labs, train_logits = distributed_train_step(mini_batch)
         step += 1
 
-        # ======== mIoU calculation ==========
-        mIoU.reset_states()
-        gt = tf.reshape(tf.argmax(train_labs, axis=-1), -1)
-        pred = tf.reshape(tf.argmax(train_logits, axis=-1), -1)
-        mIoU.update_state(gt, pred)
         # ====================================
         write_to_tensorboard(c_step, image_write_step, train_writer, train_logits, mini_batch)
         if step == total_samples // args.batch_size:
