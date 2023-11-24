@@ -364,8 +364,7 @@ while epoch < EPOCHS:
 
         # ====================================
         write_to_tensorboard(c_step, image_write_step, train_writer, train_logits, mini_batch)
-        # if step == total_samples // args.batch_size:
-        if step == 100:
+        if step == total_samples // args.batch_size:
             epoch += 1
             break
 
