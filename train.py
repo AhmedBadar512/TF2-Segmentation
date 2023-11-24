@@ -313,8 +313,6 @@ def write_to_tensorboard(curr_step, image_write_step, writer, logits, batch):
         with writer.as_default():
             tf.summary.scalar("loss", loss,
                               step=curr_step)
-            tf.summary.scalar("mIoU", mIoU.result().numpy(),
-                              step=curr_step)
             if curr_step % write_image_summary_steps == 0:
                 write_summary_images(batch, logits)
     with writer.as_default():
@@ -366,7 +364,8 @@ while epoch < EPOCHS:
 
         # ====================================
         write_to_tensorboard(c_step, image_write_step, train_writer, train_logits, mini_batch)
-        if step == total_samples // args.batch_size:
+        # if step == total_samples // args.batch_size:
+        if step == 100:
             epoch += 1
             break
 
