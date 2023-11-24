@@ -316,11 +316,6 @@ def write_to_tensorboard(curr_step, image_write_step, writer, logits, batch):
             tf.summary.scalar("mIoU", mIoU.result().numpy(),
                               step=curr_step)
             if curr_step % write_image_summary_steps == 0:
-                conf_matrix = tf.math.confusion_matrix(gt, pred,
-                                                       num_classes=classes)
-                conf_matrix = tf.cast(conf_matrix, dtype=tf.float64) / (
-                        tf.cast(tf.reduce_sum(conf_matrix, axis=1), dtype=tf.float64) + 1e-6)
-                tf.summary.image("conf_matrix", conf_matrix[tf.newaxis, ..., tf.newaxis], step=curr_step)
                 write_summary_images(batch, logits)
     with writer.as_default():
         tmp = lr_scheduler(step=curr_step)
