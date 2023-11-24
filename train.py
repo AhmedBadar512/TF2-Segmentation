@@ -98,6 +98,8 @@ optimizer_name = args.optimizer
 lr = args.lr
 momentum = args.momentum
 model_name = args.model
+if model_name in ['bisenetv2']:
+    aux = True
 log_freq = args.logging_freq
 write_image_summary_steps = args.write_image_summary_steps
 EPOCHS = args.epochs
@@ -183,7 +185,7 @@ with mirrored_strategy.scope():
         optimizer = keras.optimizers.SGD(learning_rate=lr_scheduler, momentum=momentum)
     model = get_model(model_name, classes=classes, in_size=(args.height, args.width), aux=aux,
                       backbone=args.backbone)
-    model(tf.random.uniform((1, args.height, args.width, 3), dtype=tf.float32), True)
+    model(tf.random.uniform((1, args.height, args.width, 3), dtype=tf.float32), True, aux=True)
     model.summary()
     if args.load_model:
         if os.path.exists(os.path.join(args.load_model)):

@@ -170,7 +170,7 @@ class BiSeNetv2(K.Model):
         # ========== Aggregation Head ============ #
         self.aggregator = Aggregator()
 
-    def call(self, inputs, training=True, mask=None, aux=True):
+    def call(self, inputs, training=True, mask=None, aux=False):
         # ========= Detail ============ #
         x1_s1 = self.detail_convblock1(inputs)         # Stride /2
         x1_s2 = self.detail_convblock2(x1_s1)             # Stride /4
@@ -204,5 +204,6 @@ if __name__ == "__main__":
     bisenet = BiSeNetv2(classes=19)
     # bisenet.build((bs, 1024, 2048, 3))
     optimizer = K.optimizers.SGD()
-    final, z1, z2, z3 = bisenet(x, True)
+    final = bisenet(x, True, aux=False)
+    bisenet.build((None, 1024, 2048, 3))
     bisenet.summary()
