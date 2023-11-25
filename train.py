@@ -3,10 +3,12 @@ import datetime
 import json
 import os
 import string
+import sys
 
 import tensorflow as tf
 import keras
 import tqdm
+import yaml
 
 import losses
 import utils.augment_images as aug
@@ -19,7 +21,7 @@ EPSILON = 1e-6
 
 
 def list_of_ints(arg):
-    return tuple(map(int, arg.split(',')))
+    return list(map(int, arg.split(',')))
 
 
 args = argparse.ArgumentParser(description="Train a network with specific settings")
@@ -117,7 +119,9 @@ logdir = os.path.join(args.save_dir,
                                                                           backbone,
                                                                           model_name,
                                                                           time))
-
+os.makedirs(logdir, exist_ok=True)
+with open(f"{logdir}/config.yaml", 'w') as file:
+    yaml.dump(args.__dict__, file)
 # =========== Load Dataset ============ #
 cmap = generate_random_colors(bg_class=args.bg_class)
 
