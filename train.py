@@ -28,7 +28,11 @@ args.add_argument("--backbone", type=str, default="",
                   choices=["resnet50", "resnet101", "resnet152", "xception", "resnet101v2",
                            "resnet50v2",
                            "mobilenetv3large",
-                           "mobilenetv3small"])
+                           "mobilenetv3small",
+                           "hardnet39",
+                           "hardnet68",
+                           "hardnet85",
+                           ])
 args.add_argument("-d", "--dataset", type=str, default="cityscapes19",
                   help="Name a dataset from the tf_dataset collection",
                   choices=["cityscapes", "cityscapes19", "ade20k", "fangzhou", "bdd_drivable"])

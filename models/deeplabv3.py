@@ -1,7 +1,7 @@
 import tensorflow as tf
 import keras
 from keras.layers import Conv2D
-from models.backbones import get_backbone, get_bb_dict
+from models.backbones import get_backbone, get_bb_dict, get_custom_bb_dict
 from models.layers import ConvBlock
 
 
@@ -88,16 +88,22 @@ class Deeplabv3plus(keras.Model):
         self.conv_f = Conv2D(classes, (1, 1), name='output_layer')
 
     def build(self, input_shape):
-        self.backbone = get_backbone(self.backbone_name, input_shape=input_shape[1:])
-        ind_dict = get_bb_dict(self.backbone, divisible_factor=32)
-        aspp_shape, backbone_b_shape = (input_shape[1]//4, input_shape[2]//4), (input_shape[1]//16, input_shape[2]//16)
-        aspp_index, backbone_b_index = ind_dict[aspp_shape][-1], ind_dict[backbone_b_shape][-1]
-        self.backbone_aspp = keras.Model(inputs=self.backbone.input, outputs=self.backbone.layers[aspp_index].output)
-        self.backbone_b = keras.Model(inputs=self.backbone.input, outputs=self.backbone.layers[backbone_b_index].output)
+        self.backbone, base_backbone = get_backbone(self.backbone_name, input_shape=input_shape[1:])
+        aspp_shape, backbone_b_shape = ((input_shape[1] // 4, input_shape[2] // 4),
+                                        (input_shape[1] // 16, input_shape[2] // 16))
+        if base_backbone:
+            ind_dict = get_bb_dict(self.backbone, divisible_factor=32)
+            aspp_index, backbone_b_index = ind_dict[aspp_shape][-1], ind_dict[backbone_b_shape][-1]
+            self.backbone = keras.Model(inputs=self.backbone.input, outputs=[self.backbone.layers[aspp_index].output, self.backbone.layers[backbone_b_index].output])
+        else:
+            outs = self.backbone(keras.Input(input_shape[1:]))
+            out_dict = get_custom_bb_dict(outs, 32)
+            self.backbone = keras.Model(self.backbone.input,
+                                        outputs=[outs[out_dict[aspp_shape]], outs[out_dict[backbone_b_shape]]])
+
 
     def call(self, inputs, training=None, mask=None, aux=False):
-        x_aspp = self.backbone_aspp(inputs)
-        x_b = self.backbone_b(inputs)
+        x_aspp, x_b = self.backbone(inputs)
         x_aspp = self.aspp(x_aspp, training)
         x_a = tf.image.resize(x_aspp, tf.shape(x_b)[1:3])
         x_b = self.convblock1(x_b, training)
